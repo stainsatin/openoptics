@@ -304,6 +304,13 @@ class Ns3Backend(BackendBase):
             )
         self._ns = ns
 
+        # Disable TCP SACK to avoid ns-3.44 segmentation fault bug
+        try:
+            ns.core.Config.SetDefault("ns3::TcpSocketBase::Sack",
+                                      ns.core.BooleanValue(False))
+        except Exception:
+            pass  # Ignore if Config.SetDefault is not available
+
         self._build_topology(
             nb_node=nb_node,
             nb_link=nb_link,
@@ -627,6 +634,36 @@ class Ns3Backend(BackendBase):
                 f"  Totals:  tx={sum_tx}  rx={sum_rx}  lost={sum_lost} "
                 f"({overall_loss:.1f}%)  flows={n_flows}"
             )
+
+            # ---- FCT Statistics ----
+            fct_list = []
+            for flow_id, stats in self._flow_stats_records:
+                if stats.fct_s is not None and not (stats.fct_s != stats.fct_s):  # not NaN
+                    if stats.fct_s > 0:
+                        fct_list.append(stats.fct_s * 1000)  # convert to ms
+
+            if fct_list:
+                import statistics
+                rule("-")
+                print(f"  FCT Statistics ({len(fct_list)} completed flows)")
+                rule("-")
+                print(f"  Mean FCT:     {statistics.mean(fct_list):>10.2f} ms")
+                print(f"  Median FCT:   {statistics.median(fct_list):>10.2f} ms")
+                print(f"  Min FCT:      {min(fct_list):>10.2f} ms")
+                print(f"  Max FCT:      {max(fct_list):>10.2f} ms")
+                if len(fct_list) > 1:
+                    print(f"  Stdev FCT:    {statistics.stdev(fct_list):>10.2f} ms")
+
+                # Percentiles
+                if len(fct_list) >= 2:
+                    sorted_fct = sorted(fct_list)
+                    p50 = sorted_fct[int(len(sorted_fct) * 0.50)]
+                    p95 = sorted_fct[min(int(len(sorted_fct) * 0.95), len(sorted_fct) - 1)]
+                    p99 = sorted_fct[min(int(len(sorted_fct) * 0.99), len(sorted_fct) - 1)]
+                    print(f"  50th percentile: {p50:>7.2f} ms")
+                    print(f"  95th percentile: {p95:>7.2f} ms")
+                    print(f"  99th percentile: {p99:>7.2f} ms")
+
         rule("=")
         print()
 
@@ -1225,6 +1262,18 @@ class Ns3Backend(BackendBase):
             app.SetAdmissionControl(self._admission_control)
             app.SetStartTime(ns.Seconds(0.0))
             self._tor_apps[tor_id] = app
+
+        # ---- FlareHostApp (one per host node) --------------------------
+        for node_id in range(nb_node):
+            fapp = ns.CreateObject["ns3::openoptics::FlareHostApp"]()
+            self._host_nodes[node_id].AddApplication(fapp)
+            fapp.SetNodeId(node_id)
+            fapp.SetHostDevice(
+                self._host_nodes[node_id].GetDevice(0)
+            )
+            fapp.SetStartTime(ns.Seconds(0.0))
+            fapp.SetStopTime(ns.Seconds(self._simulation_stop_s))
+            self._flare_apps[node_id] = fapp
 
         # ---- FlowMonitor ----------------------------------------------
         # Hosts are the only flow endpoints. ToRs have IP stacks but the
