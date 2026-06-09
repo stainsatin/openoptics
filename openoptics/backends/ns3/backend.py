@@ -1263,18 +1263,6 @@ class Ns3Backend(BackendBase):
             app.SetStartTime(ns.Seconds(0.0))
             self._tor_apps[tor_id] = app
 
-        # ---- FlareHostApp (one per host node) --------------------------
-        for node_id in range(nb_node):
-            fapp = ns.CreateObject["ns3::openoptics::FlareHostApp"]()
-            self._host_nodes[node_id].AddApplication(fapp)
-            fapp.SetNodeId(node_id)
-            fapp.SetHostDevice(
-                self._host_nodes[node_id].GetDevice(0)
-            )
-            fapp.SetStartTime(ns.Seconds(0.0))
-            fapp.SetStopTime(ns.Seconds(self._simulation_stop_s))
-            self._flare_apps[node_id] = fapp
-
         # ---- FlowMonitor ----------------------------------------------
         # Hosts are the only flow endpoints. ToRs have IP stacks but the
         # L2 promiscuous handler consumes packets before IP sees them, so
