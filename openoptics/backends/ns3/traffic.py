@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import ceil, floor
 import re
-from typing import Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 
 Number = Union[int, float]
@@ -176,6 +176,188 @@ class OnOffFlowSpec:
 
 
 TrafficSpec = Union[UdpFlowSpec, TcpBulkFlowSpec, OnOffFlowSpec]
+
+
+_FLARE_PROFILES = {
+    "55us": {
+        "credit_qsize_pkts": 60,
+        "shaping_thresh_pkts": 30,
+        "aeolus_thresh_pkts": 40,
+        "w_init": 1.0,
+        "target_loss": 0.1,
+    },
+    "15us": {
+        "credit_qsize_pkts": 16,
+        "shaping_thresh_pkts": 8,
+        "aeolus_thresh_pkts": 8,
+        "w_init": 1.0,
+        "target_loss": 0.1,
+    },
+}
+
+
+@dataclass(frozen=True)
+class FlareConfig:
+    """Paper-profile configuration for the Flare ns-3 transport model."""
+
+    profile: str = "55us"
+    credit_qsize_pkts: Optional[int] = None
+    shaping_thresh_pkts: Optional[int] = None
+    aeolus_thresh_pkts: Optional[int] = None
+    w_init: Optional[float] = None
+    target_loss: Optional[float] = None
+    mtu_bytes: int = 1024
+    retransmission_timeout_s: float = 0.0002
+    initial_credit_pkts: Optional[int] = None
+
+    @classmethod
+    def from_profile(cls, profile: str = "55us", **overrides) -> "FlareConfig":
+        """Return a config with paper defaults plus explicit overrides."""
+        return cls(profile=profile, **overrides).resolved()
+
+    def resolved(self) -> "FlareConfig":
+        profile = str(self.profile)
+        if profile not in _FLARE_PROFILES:
+            valid = ", ".join(sorted(_FLARE_PROFILES))
+            raise ValueError(f"unknown Flare profile {profile!r}; use one of {valid}")
+        defaults = _FLARE_PROFILES[profile]
+        cfg = FlareConfig(
+            profile=profile,
+            credit_qsize_pkts=(
+                defaults["credit_qsize_pkts"]
+                if self.credit_qsize_pkts is None else int(self.credit_qsize_pkts)
+            ),
+            shaping_thresh_pkts=(
+                defaults["shaping_thresh_pkts"]
+                if self.shaping_thresh_pkts is None else int(self.shaping_thresh_pkts)
+            ),
+            aeolus_thresh_pkts=(
+                defaults["aeolus_thresh_pkts"]
+                if self.aeolus_thresh_pkts is None else int(self.aeolus_thresh_pkts)
+            ),
+            w_init=defaults["w_init"] if self.w_init is None else float(self.w_init),
+            target_loss=(
+                defaults["target_loss"]
+                if self.target_loss is None else float(self.target_loss)
+            ),
+            mtu_bytes=int(self.mtu_bytes),
+            retransmission_timeout_s=float(self.retransmission_timeout_s),
+            initial_credit_pkts=(
+                None if self.initial_credit_pkts is None
+                else int(self.initial_credit_pkts)
+            ),
+        )
+        if cfg.credit_qsize_pkts <= 0:
+            raise ValueError("flare credit_qsize_pkts must be positive")
+        if cfg.shaping_thresh_pkts < 0:
+            raise ValueError("flare shaping_thresh_pkts must be non-negative")
+        if cfg.aeolus_thresh_pkts < 0:
+            raise ValueError("flare aeolus_thresh_pkts must be non-negative")
+        if cfg.mtu_bytes <= 0:
+            raise ValueError("flare mtu_bytes must be positive")
+        if cfg.retransmission_timeout_s <= 0:
+            raise ValueError("flare retransmission_timeout_s must be positive")
+        if cfg.w_init <= 0:
+            raise ValueError("flare w_init must be positive")
+        if not (0 <= cfg.target_loss <= 1):
+            raise ValueError("flare target_loss must be in [0, 1]")
+        if cfg.initial_credit_pkts is not None and cfg.initial_credit_pkts <= 0:
+            raise ValueError("flare initial_credit_pkts must be positive")
+        return cfg
+
+    @property
+    def initial_window_pkts(self) -> int:
+        if self.initial_credit_pkts is not None:
+            return int(self.initial_credit_pkts)
+        return max(1, min(int(self.credit_qsize_pkts), int(round(float(self.w_init)))))
+
+    def asdict(self) -> Dict[str, Union[str, int, float]]:
+        cfg = self.resolved()
+        return {
+            "profile": cfg.profile,
+            "credit_qsize_pkts": int(cfg.credit_qsize_pkts),
+            "shaping_thresh_pkts": int(cfg.shaping_thresh_pkts),
+            "aeolus_thresh_pkts": int(cfg.aeolus_thresh_pkts),
+            "w_init": float(cfg.w_init),
+            "target_loss": float(cfg.target_loss),
+            "mtu_bytes": int(cfg.mtu_bytes),
+            "retransmission_timeout_s": float(cfg.retransmission_timeout_s),
+            "initial_credit_pkts": int(cfg.initial_window_pkts),
+        }
+
+
+@dataclass(frozen=True)
+class FlareFlowSpec:
+    """Resolved Flare flow description."""
+
+    src: int
+    dst: int
+    size_bytes: int
+    start_s: float
+    stop_s: float
+    packet_size_bytes: int
+    flow_id: Optional[int] = None
+    port: Optional[int] = None
+    path_id: int = 0
+    name: Optional[str] = None
+    config: FlareConfig = FlareConfig()
+
+    @property
+    def protocol(self) -> str:
+        return "flare"
+
+    @property
+    def duration_s(self) -> float:
+        return self.stop_s - self.start_s
+
+    @property
+    def num_packets(self) -> int:
+        return int(ceil(float(self.size_bytes) / self.packet_size_bytes))
+
+    def with_ids(self, *, flow_id: int, port: int) -> "FlareFlowSpec":
+        return replace(self, flow_id=int(flow_id), port=int(port))
+
+
+@dataclass(frozen=True)
+class FlareStats:
+    """Flare-specific counters captured from ``FlareHostApp`` / ``TorApp``."""
+
+    flow_id: int
+    src: int
+    dst: int
+    fct_s: float
+    throughput_bps: float
+    data_packets_sent: int
+    data_packets_received: int
+    credits_sent: int
+    credits_received: int
+    credits_admitted: int = 0
+    credits_dropped: int = 0
+    credits_wasted: int = 0
+    retransmissions: int = 0
+    timeouts: int = 0
+    duplicate_data: int = 0
+    duplicate_credits: int = 0
+    path_length_histogram: Optional[Mapping[int, int]] = None
+    flow_monitor: Optional[FlowStats] = None
+
+
+@dataclass(frozen=True)
+class InstalledFlareTraffic:
+    """Result returned by :class:`FlareTrafficGenerator.install`."""
+
+    spec: FlareFlowSpec
+    apps: object
+    _backend: Optional[object] = None
+
+    def stats(self) -> Optional[FlareStats]:
+        backend = self._backend
+        if backend is None:
+            return None
+        lookup = getattr(backend, "flare_stats_for", None)
+        if lookup is None:
+            return None
+        return lookup(self.spec)
 
 
 @dataclass(frozen=True)
@@ -847,6 +1029,200 @@ class TcpTrafficGenerator(_TrafficBuilderBase):
 
     def _make_onoff_flow(self, **kwargs) -> OnOffFlowSpec:
         return _make_onoff_flow(self, **kwargs)
+
+
+class FlareTrafficGenerator(_TrafficBuilderBase):
+    """Builder for Flare receiver-driven credit-based flows."""
+
+    def __init__(
+        self,
+        backend,
+        *,
+        config: Optional[FlareConfig] = None,
+        port_base: int = 12000,
+        **defaults,
+    ) -> None:
+        super().__init__(backend, port_base=port_base)
+        self._config = (config or FlareConfig()).resolved()
+        self._defaults = dict(defaults)
+
+    @property
+    def config(self) -> FlareConfig:
+        return self._config
+
+    def flow(
+        self,
+        src: int,
+        dst: int,
+        size_bytes: int,
+        *,
+        start_s: Optional[Number] = None,
+        stop_s: Optional[Number] = None,
+        duration_s: Optional[Number] = None,
+        packet_size_bytes: Optional[int] = None,
+        port: Optional[int] = None,
+        path_id: Optional[int] = None,
+        name: Optional[str] = None,
+    ) -> "FlareTrafficGenerator":
+        self._ensure_mutable()
+        merged = dict(self._defaults)
+        merged.update({"src": src, "dst": dst, "size_bytes": size_bytes})
+        explicit = {
+            "start_s": start_s,
+            "stop_s": stop_s,
+            "duration_s": duration_s,
+            "packet_size_bytes": packet_size_bytes,
+            "port": port,
+            "path_id": path_id,
+            "name": name,
+        }
+        for key, value in explicit.items():
+            if value is not None:
+                merged[key] = value
+        merged.setdefault("start_s", 0.05)
+        merged.setdefault("stop_s", None)
+        merged.setdefault("duration_s", None)
+        merged.setdefault("packet_size_bytes", None)
+        merged.setdefault("port", None)
+        merged.setdefault("path_id", 0)
+        merged.setdefault("name", None)
+        self._flows.append(self._make_flare_flow(**merged))
+        return self
+
+    def many_to_one(
+        self,
+        sources: Iterable[int],
+        dst: int,
+        size_bytes: int,
+        **kwargs,
+    ) -> "FlareTrafficGenerator":
+        for src in sources:
+            if int(src) == int(dst):
+                continue
+            self.flow(int(src), int(dst), size_bytes, **kwargs)
+        return self
+
+    def all_to_all(
+        self,
+        nodes: Optional[Iterable[int]] = None,
+        *,
+        include_self: bool = False,
+        size_bytes: int,
+        **kwargs,
+    ) -> "FlareTrafficGenerator":
+        node_ids = list(self._all_nodes() if nodes is None else nodes)
+        for src in node_ids:
+            for dst in node_ids:
+                if not include_self and int(src) == int(dst):
+                    continue
+                self.flow(int(src), int(dst), size_bytes, **kwargs)
+        return self
+
+    def install(self) -> List[InstalledFlareTraffic]:
+        self._before_install()
+        installed: List[InstalledFlareTraffic] = []
+        resolved: List[FlareFlowSpec] = []
+        for index, spec in enumerate(self._flows):
+            if spec.flow_id is None or spec.port is None:
+                flow_id = spec.flow_id
+                if flow_id is None:
+                    flow_id = self._allocate_flare_flow_id()
+                port = spec.port if spec.port is not None else self._allocate_port()
+                spec = spec.with_ids(flow_id=int(flow_id), port=int(port))
+            apps = self._backend.install_flare_flow(
+                src=spec.src,
+                dst=spec.dst,
+                flow_id=int(spec.flow_id),
+                start_s=spec.start_s,
+                stop_s=spec.stop_s,
+                size_bytes=spec.size_bytes,
+                packet_size_bytes=spec.packet_size_bytes,
+                port=int(spec.port),
+                path_id=spec.path_id,
+                config=spec.config,
+            )
+            resolved.append(spec)
+            installed.append(
+                InstalledFlareTraffic(spec=spec, apps=apps, _backend=self._backend)
+            )
+        self._after_install(resolved)
+        return installed
+
+    def describe(self) -> List[dict]:
+        rows = []
+        for index, spec in enumerate(self._flows):
+            rows.append(
+                {
+                    "name": spec.name or f"flow{index}",
+                    "protocol": "flare",
+                    "src": spec.src,
+                    "dst": spec.dst,
+                    "start_s": spec.start_s,
+                    "stop_s": spec.stop_s,
+                    "duration_s": spec.duration_s,
+                    "size_bytes": spec.size_bytes,
+                    "packet_size_bytes": spec.packet_size_bytes,
+                    "num_packets": spec.num_packets,
+                    "flow_id": spec.flow_id,
+                    "port": spec.port,
+                    "path_id": spec.path_id,
+                    "config": spec.config.asdict(),
+                }
+            )
+        return rows
+
+    def _allocate_flare_flow_id(self) -> int:
+        allocator = getattr(self._backend, "_allocate_flare_flow_id", None)
+        if allocator is not None:
+            return int(allocator())
+        return self._allocate_port()
+
+    def _make_flare_flow(
+        self,
+        *,
+        src: int,
+        dst: int,
+        size_bytes: int,
+        start_s: Number,
+        stop_s: Optional[Number],
+        duration_s: Optional[Number],
+        packet_size_bytes: Optional[int],
+        port: Optional[int],
+        path_id: int,
+        name: Optional[str],
+        **unused_defaults,
+    ) -> FlareFlowSpec:
+        if unused_defaults:
+            names = ", ".join(sorted(unused_defaults))
+            raise TypeError(f"unknown Flare traffic default(s): {names}")
+        src = int(src)
+        dst = int(dst)
+        self._validate_node_pair(src, dst)
+        if int(size_bytes) <= 0:
+            raise ValueError("size_bytes must be positive")
+        pkt_size = self._config.mtu_bytes if packet_size_bytes is None else int(packet_size_bytes)
+        if pkt_size <= 0:
+            raise ValueError("packet_size_bytes must be positive")
+        start = self._validate_start(start_s)
+        stop = self._resolve_stop(
+            start_s=start,
+            stop_s=stop_s,
+            duration_s=duration_s,
+        )
+        if stop <= start:
+            raise ValueError("stop_s must be greater than start_s")
+        return FlareFlowSpec(
+            src=src,
+            dst=dst,
+            size_bytes=int(size_bytes),
+            start_s=start,
+            stop_s=stop,
+            packet_size_bytes=pkt_size,
+            port=None if port is None else int(port),
+            path_id=int(path_id),
+            name=name,
+            config=self._config,
+        )
 
 
 def _make_onoff_flow(

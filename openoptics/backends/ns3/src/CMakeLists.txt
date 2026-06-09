@@ -9,11 +9,15 @@ build_lib(
     SOURCE_FILES
         model/openoptics-header.cc
         model/openoptics-source-route-header.cc
+        model/flare-header.cc
+        model/flare-host-app.cc
         model/openoptics-ocs-app.cc
         model/openoptics-tor-app.cc
     HEADER_FILES
         model/openoptics-header.h
         model/openoptics-source-route-header.h
+        model/flare-header.h
+        model/flare-host-app.h
         model/openoptics-calendar-queue.h
         model/openoptics-ocs-app.h
         model/openoptics-tor-app.h

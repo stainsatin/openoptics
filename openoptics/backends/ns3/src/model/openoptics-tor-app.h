@@ -9,6 +9,7 @@
 #ifndef OPENOPTICS_TOR_APP_H
 #define OPENOPTICS_TOR_APP_H
 
+#include "flare-header.h"
 #include "openoptics-calendar-queue.h"
 #include "openoptics-header.h"
 #include "openoptics-source-route-header.h"
@@ -145,6 +146,14 @@ class TorApp : public Application
     uint64_t GetDropSrEndNotDst() const;
     uint64_t GetDropSrTransitBadCur() const;
     uint64_t GetDropAdmFail() const;
+    uint64_t GetFlareCreditAdmitted() const;
+    uint64_t GetFlareCreditDropped() const;
+    uint64_t GetFlareCreditWasted() const;
+    uint64_t GetFlareCreditDataPackets() const;
+
+    void SetFlareCreditQueueSizePkts(uint32_t pkts);
+    void SetFlareShapingThresholdPkts(uint32_t pkts);
+    void SetFlareAeolusThresholdPkts(uint32_t pkts);
 
     // Per-hop admission control. When on, HandleRoutedPacket walks
     // ``(dst, arrival_ts + offset)`` and forwards on the first entry
@@ -236,6 +245,7 @@ class TorApp : public Application
     // preserving existing entries. Tolerates SetNumSlices and
     // AddUplinkDevice in any order.
     void ResizeCqBytesPerSlot();
+    void ResizeFlareCreditState();
 
     // Rebuild m_cq with one calendar queue per uplink, each sized to
     // m_numSlices. No-op once StartApplication has run (would discard live
@@ -251,6 +261,14 @@ class TorApp : public Application
 
     uint32_t CurrentSlice() const;
     uint64_t TimeUntilSliceStartUs(uint32_t slice) const;
+    bool PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
+                         FlareHeader* out) const;
+    bool AdmitFlareCredit(uint32_t send_ts,
+                          uint32_t send_port,
+                          const FlareHeader& flare);
+    void ReleaseFlareCredit(uint32_t send_ts,
+                            uint32_t send_port,
+                            const FlareHeader& flare);
 
     // Extract destination IP (as dotted-quad string) from a packet whose
     // head is an IPv4 header (dst is offset 16).
@@ -361,6 +379,10 @@ class TorApp : public Application
     uint64_t m_dropSrEndNotDst = 0;
     uint64_t m_dropSrTransitBadCur = 0;
     uint64_t m_dropAdmFail = 0;            // ADM-mode: no slot passed AdmCheck
+    uint64_t m_flareCreditAdmitted = 0;
+    uint64_t m_flareCreditDropped = 0;
+    uint64_t m_flareCreditWasted = 0;
+    uint64_t m_flareDataPackets = 0;
     uint64_t m_cqBufferedBytes;
     uint64_t m_cqPeakBufferedBytes;
 
@@ -371,6 +393,10 @@ class TorApp : public Application
     // contention is independent. Sized lazily by SetNumSlices and
     // AddUplinkDevice in any order.
     std::vector<std::vector<uint64_t>> m_cqBytesPerSlot;
+    std::vector<std::vector<uint32_t>> m_flareCreditPktsPerSlot;
+    uint32_t m_flareCreditQsizePkts = 60;
+    uint32_t m_flareShapingThreshPkts = 30;
+    uint32_t m_flareAeolusThreshPkts = 40;
 
     // Uplink rate (bps). Must be positive by StartApplication (NS_ABORT).
     // No scalar bytes-this-slice counter is needed because absolute

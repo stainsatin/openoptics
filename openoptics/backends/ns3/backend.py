@@ -37,6 +37,10 @@ from openoptics.backends.base import (
 )
 from openoptics.backends.ns3.install import env_config_path
 from openoptics.backends.ns3.traffic import (
+    FlareConfig,
+    FlareFlowSpec,
+    FlareStats,
+    FlareTrafficGenerator,
     FlowStats,
     TcpBulkFlowSpec,
     TcpTrafficGenerator,
@@ -139,6 +143,12 @@ class Ns3Backend(BackendBase):
             "snapshot_interval_us",    # dashboard sampling cadence (default = time_slice_duration_us)
             "verify_sr_cur_node",      # opt-in P4-style verify_desired_node for source-routed hops
             "admission_control",       # per-hop ADM: walk (dst, arrival_ts+offset) until AdmCheck passes; no-op for source routing (warns)
+            "flare_profile",
+            "flare_credit_qsize_pkts",
+            "flare_shaping_thresh_pkts",
+            "flare_aeolus_thresh_pkts",
+            "flare_w_init",
+            "flare_target_loss",
         }
 
     def __init__(self) -> None:
@@ -175,6 +185,7 @@ class Ns3Backend(BackendBase):
         self._host_link_delay_us: int = 1
         self._ocs_link_delay_us: int = 1
         self._guardband_us: int = 0
+        self._flare_config: FlareConfig = FlareConfig().resolved()
 
         # ns-3 simulation objects. All cppyy Ptrs; keep references alive.
         self._host_nodes: list = []
@@ -182,6 +193,7 @@ class Ns3Backend(BackendBase):
         self._ocs_node = None
         self._ocs_app = None                          # openoptics::OcsApp
         self._tor_apps: Dict[int, object] = {}        # tor_id -> openoptics::TorApp
+        self._flare_apps: Dict[int, object] = {}      # node_id -> openoptics::FlareHostApp
         self._host_iface_addrs: List[str] = []        # "10.0.{i}.1" per host
         self._ip_to_tor: Dict[str, int] = {}
 
@@ -211,6 +223,7 @@ class Ns3Backend(BackendBase):
         # Traffic-gen apps pinned for lifetime of the run.
         self._traffic_apps: list = []
         self._next_traffic_port: int = 9000
+        self._next_flare_flow_id: int = 1
 
     # ------------------------------------------------------------------
     # BackendBase interface
@@ -291,6 +304,15 @@ class Ns3Backend(BackendBase):
             backend_kwargs.get("admission_control", False)
         )
         self._sr_adm_warned = False
+
+        self._flare_config = FlareConfig(
+            profile=str(backend_kwargs.get("flare_profile", "55us")),
+            credit_qsize_pkts=backend_kwargs.get("flare_credit_qsize_pkts"),
+            shaping_thresh_pkts=backend_kwargs.get("flare_shaping_thresh_pkts"),
+            aeolus_thresh_pkts=backend_kwargs.get("flare_aeolus_thresh_pkts"),
+            w_init=backend_kwargs.get("flare_w_init"),
+            target_loss=backend_kwargs.get("flare_target_loss"),
+        ).resolved()
 
         # Lazy import. cling's benign static-initializer noise is filtered
         # by _import_ns_quietly.
@@ -542,6 +564,7 @@ class Ns3Backend(BackendBase):
                 ("SrEndNotDst",       "GetDropSrEndNotDst"),
                 ("SrTransitBadCur",   "GetDropSrTransitBadCur"),
                 ("AdmFail",           "GetDropAdmFail"),
+                ("FlareCreditDropped","GetFlareCreditDropped"),
             )
             site_totals = []
             for label, fn_name in site_getters:
@@ -555,6 +578,23 @@ class Ns3Backend(BackendBase):
                 print(f"  drop reasons (totalled across all ToRs):")
                 for label, total in site_totals:
                     print(f"    {label:<22}{total:>10}")
+
+        flare_credit_admitted = flare_credit_dropped = flare_credit_wasted = 0
+        flare_data_packets = 0
+        for app in self._tor_apps.values():
+            if not hasattr(app, "GetFlareCreditAdmitted"):
+                continue
+            flare_credit_admitted += int(app.GetFlareCreditAdmitted())
+            flare_credit_dropped += int(app.GetFlareCreditDropped())
+            flare_credit_wasted += int(app.GetFlareCreditWasted())
+            flare_data_packets += int(app.GetFlareCreditDataPackets())
+        if (flare_credit_admitted or flare_credit_dropped or
+                flare_credit_wasted or flare_data_packets):
+            print("  Flare transport counters (totalled across all ToRs):")
+            print(f"    credit_admitted       {flare_credit_admitted:>10}")
+            print(f"    credit_dropped        {flare_credit_dropped:>10}")
+            print(f"    credit_wasted         {flare_credit_wasted:>10}")
+            print(f"    data_packets_seen     {flare_data_packets:>10}")
 
         # ---- Flow-level end-to-end ----
         if not self._flow_stats_records:
@@ -738,10 +778,30 @@ class Ns3Backend(BackendBase):
         """
         return TcpTrafficGenerator(self, **defaults)
 
+    def flare_traffic(
+        self,
+        *,
+        config: Optional[FlareConfig] = None,
+        **defaults,
+    ) -> FlareTrafficGenerator:
+        """Return a Flare traffic builder for this simulation.
+
+        Flare is modeled as an OpenOptics/ns-3 host transport with
+        receiver-issued credits and ToR-side credit admission/shaping.
+        """
+        if config is None:
+            config = self._flare_config
+        return FlareTrafficGenerator(self, config=config, **defaults)
+
     def _allocate_traffic_port(self) -> int:
         port = self._next_traffic_port
         self._next_traffic_port += 1
         return port
+
+    def _allocate_flare_flow_id(self) -> int:
+        flow_id = self._next_flare_flow_id
+        self._next_flare_flow_id += 1
+        return flow_id
 
     def install_udp_flow(
         self,
@@ -905,6 +965,65 @@ class Ns3Backend(BackendBase):
             port=port,
             echo=True,
         )
+
+    def install_flare_flow(
+        self,
+        src: int,
+        dst: int,
+        *,
+        flow_id: int,
+        start_s: float,
+        stop_s: float,
+        size_bytes: int,
+        packet_size_bytes: int,
+        port: int,
+        path_id: int,
+        config: FlareConfig,
+    ):
+        """Install one Flare flow on the source and destination host apps."""
+        ns = self._ns
+        if ns is None:
+            raise RuntimeError("traffic installer called before setup()")
+        self._validate_traffic_endpoints(src, dst)
+        if int(size_bytes) <= 0:
+            raise ValueError("size_bytes must be positive")
+        if int(packet_size_bytes) <= 0:
+            raise ValueError("packet_size_bytes must be positive")
+
+        cfg = config.resolved()
+        src_app = self._flare_apps[src]
+        dst_app = self._flare_apps[dst]
+        src_ip = self._host_iface_addrs[src]
+        dst_ip = self._host_iface_addrs[dst]
+
+        src_app.AddSenderFlow(
+            int(flow_id),
+            int(dst),
+            str(src_ip),
+            str(dst_ip),
+            float(start_s),
+            float(stop_s),
+            int(size_bytes),
+            int(packet_size_bytes),
+            int(port),
+            int(path_id),
+            int(cfg.initial_window_pkts),
+        )
+        dst_app.AddReceiverFlow(
+            int(flow_id),
+            int(src),
+            str(dst_ip),
+            str(src_ip),
+            float(start_s),
+            float(self._simulation_stop_s),
+            int(size_bytes),
+            int(packet_size_bytes),
+            int(port),
+            int(path_id),
+            int(cfg.initial_window_pkts),
+        )
+        self._traffic_apps.extend([src_app, dst_app])
+        return src_app, dst_app
 
     def _install_udp_apps(
         self,
@@ -1117,11 +1236,74 @@ class Ns3Backend(BackendBase):
             return None
         if not self._host_iface_addrs:
             return None
+        if isinstance(spec, FlareFlowSpec) or getattr(spec, "protocol", None) == "flare":
+            return None
         src_ip = self._host_iface_addrs[spec.src]
         dst_ip = self._host_iface_addrs[spec.dst]
         proto = "udp" if isinstance(spec, (UdpFlowSpec,)) or getattr(spec, "protocol", None) == "udp" else "tcp"
         return self._flow_stats_index.get(
             (src_ip, dst_ip, int(spec.port), proto)
+        )
+
+    def flare_stats_for(self, spec: FlareFlowSpec) -> Optional[FlareStats]:
+        """Return Flare transport counters for ``spec`` after simulation."""
+        if spec.flow_id is None:
+            return None
+        if spec.src not in self._flare_apps or spec.dst not in self._flare_apps:
+            return None
+        flow_id = int(spec.flow_id)
+        src_app = self._flare_apps[spec.src]
+        dst_app = self._flare_apps[spec.dst]
+
+        tor_credit_admitted = 0
+        tor_credit_dropped = 0
+        tor_credit_wasted = 0
+        for app in self._tor_apps.values():
+            for getter, acc in (
+                ("GetFlareCreditAdmitted", "admitted"),
+                ("GetFlareCreditDropped", "dropped"),
+                ("GetFlareCreditWasted", "wasted"),
+            ):
+                if not hasattr(app, getter):
+                    continue
+                value = int(getattr(app, getter)())
+                if acc == "admitted":
+                    tor_credit_admitted += value
+                elif acc == "dropped":
+                    tor_credit_dropped += value
+                else:
+                    tor_credit_wasted += value
+
+        fct_us = int(dst_app.GetFlowCompletionTimeUs(flow_id))
+        fct_s = float(fct_us) / 1e6 if fct_us > 0 else float("nan")
+        throughput = (
+            float(spec.size_bytes) * 8.0 / fct_s
+            if fct_s == fct_s and fct_s > 0
+            else float("nan")
+        )
+        return FlareStats(
+            flow_id=flow_id,
+            src=spec.src,
+            dst=spec.dst,
+            fct_s=fct_s,
+            throughput_bps=throughput,
+            data_packets_sent=int(src_app.GetDataPacketsSent(flow_id)),
+            data_packets_received=int(dst_app.GetDataPacketsReceived(flow_id)),
+            credits_sent=int(dst_app.GetCreditsSent(flow_id)),
+            credits_received=int(src_app.GetCreditsReceived(flow_id)),
+            credits_admitted=tor_credit_admitted,
+            credits_dropped=tor_credit_dropped,
+            credits_wasted=tor_credit_wasted,
+            retransmissions=int(src_app.GetRetransmissions(flow_id)),
+            timeouts=int(src_app.GetTimeouts(flow_id)),
+            duplicate_data=int(dst_app.GetDuplicateData(flow_id)),
+            duplicate_credits=int(src_app.GetDuplicateCredits(flow_id)),
+            path_length_histogram={
+                1: int(dst_app.GetPathLengthCount(flow_id, 1)),
+                2: int(dst_app.GetPathLengthCount(flow_id, 2)),
+                3: int(dst_app.GetPathLengthCount(flow_id, 3)),
+            },
+            flow_monitor=None,
         )
 
     # ------------------------------------------------------------------
@@ -1260,8 +1442,32 @@ class Ns3Backend(BackendBase):
             app.SetUplinkPropagationDelayUs(ocs_link_delay_us)
             app.SetVerifySrCurNode(self._verify_sr_cur_node)
             app.SetAdmissionControl(self._admission_control)
+            app.SetFlareCreditQueueSizePkts(self._flare_config.credit_qsize_pkts)
+            app.SetFlareShapingThresholdPkts(self._flare_config.shaping_thresh_pkts)
+            app.SetFlareAeolusThresholdPkts(self._flare_config.aeolus_thresh_pkts)
             app.SetStartTime(ns.Seconds(0.0))
             self._tor_apps[tor_id] = app
+
+        # ---- FlareHostApp (one per host node) --------------------------
+        for node_id in range(nb_node):
+            fapp = ns.CreateObject["ns3::openoptics::FlareHostApp"]()
+            self._host_nodes[node_id].AddApplication(fapp)
+            fapp.SetNodeId(node_id)
+            fapp.SetDefaultConfig(
+                self._flare_config.credit_qsize_pkts,
+                self._flare_config.shaping_thresh_pkts,
+                self._flare_config.aeolus_thresh_pkts,
+                self._flare_config.w_init,
+                self._flare_config.target_loss,
+                self._flare_config.mtu_bytes,
+                self._flare_config.retransmission_timeout_s,
+            )
+            fapp.SetHostDevice(
+                self._host_nodes[node_id].GetDevice(0)
+            )
+            fapp.SetStartTime(ns.Seconds(0.0))
+            fapp.SetStopTime(ns.Seconds(self._simulation_stop_s))
+            self._flare_apps[node_id] = fapp
 
         # ---- FlowMonitor ----------------------------------------------
         # Hosts are the only flow endpoints. ToRs have IP stacks but the

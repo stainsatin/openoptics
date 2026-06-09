@@ -254,6 +254,15 @@ class BaseNetwork:
             )
         return traffic_builder(**defaults)
 
+    def flare_traffic(self, **defaults):
+        """Return a Flare traffic builder when the selected backend supports it."""
+        traffic_builder = getattr(self._backend, "flare_traffic", None)
+        if not callable(traffic_builder):
+            raise NotImplementedError(
+                "flare_traffic() is currently supported only by the ns-3 backend"
+            )
+        return traffic_builder(**defaults)
+
     def cal_node_port_to_ocs_port(self, node_id, port_id):
         """
         Find the OCS's port that connects to a node's port.

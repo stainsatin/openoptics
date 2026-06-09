@@ -69,6 +69,15 @@ class TestTrafficBuilderFacade(unittest.TestCase):
             ("tcp", {"duration_s": 0.5}),
         )
 
+    def test_flare_traffic_delegates_to_backend(self):
+        net, backend = _make_net()
+        backend.flare_traffic = lambda **defaults: ("flare", defaults)
+
+        self.assertEqual(
+            net.flare_traffic(size_bytes=4096),
+            ("flare", {"size_bytes": 4096}),
+        )
+
     def test_traffic_builders_raise_for_unsupported_backend(self):
         net, _ = _make_net()
 
@@ -76,6 +85,8 @@ class TestTrafficBuilderFacade(unittest.TestCase):
             net.udp_traffic()
         with self.assertRaises(NotImplementedError):
             net.tcp_traffic()
+        with self.assertRaises(NotImplementedError):
+            net.flare_traffic()
 
 
 class TestStartMonitorDashboardSelection(unittest.TestCase):

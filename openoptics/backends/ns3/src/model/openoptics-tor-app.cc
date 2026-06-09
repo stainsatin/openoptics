@@ -8,8 +8,10 @@
 
 #include "openoptics-tor-app.h"
 
+#include "flare-header.h"
 #include "openoptics-header.h"
 
+#include "ns3/ipv4-header.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/nstime.h"
@@ -95,6 +97,7 @@ TorApp::SetNumSlices(uint32_t n)
     // would discard live state (configure before StartApplication).
     EnsureCalendarQueues();
     ResizeCqBytesPerSlot();
+    ResizeFlareCreditState();
 }
 
 void
@@ -154,6 +157,14 @@ TorApp::ResizeCqBytesPerSlot()
     const std::size_t slots = m_numSlices > 0 ? m_numSlices : 1;
     const std::size_t uplinks = m_uplinks.size();
     m_cqBytesPerSlot.assign(slots, std::vector<uint64_t>(uplinks, 0));
+}
+
+void
+TorApp::ResizeFlareCreditState()
+{
+    const std::size_t slots = m_numSlices > 0 ? m_numSlices : 1;
+    const std::size_t uplinks = m_uplinks.size();
+    m_flareCreditPktsPerSlot.assign(slots, std::vector<uint32_t>(uplinks, 0));
 }
 
 void
@@ -219,6 +230,7 @@ TorApp::AddUplinkDevice(Ptr<NetDevice> device)
         /*promiscuous=*/true);
     EnsureCalendarQueues();
     ResizeCqBytesPerSlot();
+    ResizeFlareCreditState();
     return idx;
 }
 
@@ -348,9 +360,16 @@ uint64_t TorApp::GetDropSrUplinkSize() const         { return m_dropSrUplinkSize
 uint64_t TorApp::GetDropSrEndNotDst() const          { return m_dropSrEndNotDst; }
 uint64_t TorApp::GetDropSrTransitBadCur() const      { return m_dropSrTransitBadCur; }
 uint64_t TorApp::GetDropAdmFail() const              { return m_dropAdmFail; }
+uint64_t TorApp::GetFlareCreditAdmitted() const      { return m_flareCreditAdmitted; }
+uint64_t TorApp::GetFlareCreditDropped() const       { return m_flareCreditDropped; }
+uint64_t TorApp::GetFlareCreditWasted() const        { return m_flareCreditWasted; }
+uint64_t TorApp::GetFlareCreditDataPackets() const   { return m_flareDataPackets; }
 
 void TorApp::SetAdmissionControl(bool enabled)        { m_admissionControl = enabled; }
 bool TorApp::GetAdmissionControl() const              { return m_admissionControl; }
+void TorApp::SetFlareCreditQueueSizePkts(uint32_t pkts) { m_flareCreditQsizePkts = pkts; }
+void TorApp::SetFlareShapingThresholdPkts(uint32_t pkts) { m_flareShapingThreshPkts = pkts; }
+void TorApp::SetFlareAeolusThresholdPkts(uint32_t pkts) { m_flareAeolusThreshPkts = pkts; }
 
 uint64_t
 TorApp::GetTotalQueueDepth() const
@@ -462,6 +481,10 @@ TorApp::DrainSlice(uint32_t slice)
         while (m_cq[uplink].Peek(slice, &pkt, &cookie))
         {
             const std::size_t pkt_bytes = pkt->GetSize();
+            FlareHeader flare;
+            const bool is_flare_credit =
+                PeekFlareHeader(pkt, &flare) &&
+                flare.GetType() == FlareHeader::CREDIT;
             if (!CanFinishInActiveWindow(uplink, slice, pkt_bytes))
             {
                 if (m_linkFreeAt[uplink] > Simulator::Now())
@@ -472,6 +495,11 @@ TorApp::DrainSlice(uint32_t slice)
                     // schedule.
                     m_cq[uplink].Dequeue(slice, &pkt, &cookie);
                     RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
+                    if (is_flare_credit)
+                    {
+                        ReleaseFlareCredit(slice, uplink, flare);
+                        ++m_flareCreditWasted;
+                    }
                     ++m_drops;
                     ++m_sliceOverflowDrops;
                     continue;
@@ -487,6 +515,10 @@ TorApp::DrainSlice(uint32_t slice)
             // the updated state.
             m_cq[uplink].Dequeue(slice, &pkt, &cookie);
             RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
+            if (is_flare_credit)
+            {
+                ReleaseFlareCredit(slice, uplink, flare);
+            }
             const uint64_t serialize_ns =
                 (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL
                  + m_uplinkLinkRateBps - 1ULL)
@@ -679,6 +711,97 @@ TorApp::ExtractIpv4Dst(Ptr<const Packet> packet)
     os << static_cast<int>(buf[16]) << '.' << static_cast<int>(buf[17]) << '.'
        << static_cast<int>(buf[18]) << '.' << static_cast<int>(buf[19]);
     return os.str();
+}
+
+bool
+TorApp::PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
+                        FlareHeader* out) const
+{
+    Ptr<Packet> pkt = pkt_with_headers->Copy();
+    OpenOpticsHeader oo;
+    if (pkt->GetSize() < oo.GetSerializedSize())
+    {
+        return false;
+    }
+    pkt->RemoveHeader(oo);
+    if (oo.GetMode() == OpenOpticsHeader::kSourceRouted)
+    {
+        OpenOpticsSourceRouteHeader sr;
+        if (pkt->GetSize() < 2)
+        {
+            return false;
+        }
+        pkt->RemoveHeader(sr);
+    }
+
+    Ipv4Header ip;
+    if (pkt->GetSize() < ip.GetSerializedSize())
+    {
+        return false;
+    }
+    pkt->RemoveHeader(ip);
+
+    FlareHeader flare;
+    if (pkt->GetSize() < flare.GetSerializedSize())
+    {
+        return false;
+    }
+    pkt->RemoveHeader(flare);
+    if (!flare.IsValid())
+    {
+        return false;
+    }
+    if (out)
+    {
+        *out = flare;
+    }
+    return true;
+}
+
+bool
+TorApp::AdmitFlareCredit(uint32_t send_ts,
+                         uint32_t send_port,
+                         const FlareHeader& flare)
+{
+    if (send_ts >= m_flareCreditPktsPerSlot.size() ||
+        send_port >= m_flareCreditPktsPerSlot[send_ts].size())
+    {
+        ++m_flareCreditDropped;
+        ++m_drops;
+        return false;
+    }
+
+    uint32_t& occupancy = m_flareCreditPktsPerSlot[send_ts][send_port];
+    const uint32_t limit =
+        flare.GetRemainingHops() <= 1
+            ? std::max(m_flareShapingThreshPkts, m_flareAeolusThreshPkts)
+            : m_flareShapingThreshPkts;
+    if (occupancy >= m_flareCreditQsizePkts ||
+        (limit > 0 && occupancy >= limit))
+    {
+        ++m_flareCreditDropped;
+        ++m_drops;
+        return false;
+    }
+    ++occupancy;
+    ++m_flareCreditAdmitted;
+    return true;
+}
+
+void
+TorApp::ReleaseFlareCredit(uint32_t send_ts,
+                           uint32_t send_port,
+                           const FlareHeader& /*flare*/)
+{
+    if (send_ts < m_flareCreditPktsPerSlot.size() &&
+        send_port < m_flareCreditPktsPerSlot[send_ts].size())
+    {
+        uint32_t& occupancy = m_flareCreditPktsPerSlot[send_ts][send_port];
+        if (occupancy > 0)
+        {
+            --occupancy;
+        }
+    }
 }
 
 
@@ -887,17 +1010,40 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
         return;
     }
 
+    FlareHeader flare;
+    const bool has_flare = PeekFlareHeader(pkt_with_headers, &flare);
+    const bool is_flare_credit =
+        has_flare && flare.GetType() == FlareHeader::CREDIT;
+    if (has_flare && flare.GetType() == FlareHeader::DATA)
+    {
+        ++m_flareDataPackets;
+    }
+    if (is_flare_credit && !AdmitFlareCredit(send_ts, send_port, flare))
+    {
+        return;
+    }
+
     const std::size_t pkt_bytes = pkt_with_headers->GetSize();
     const uint64_t pkt_bytes_u64 = static_cast<uint64_t>(pkt_bytes);
     if (pkt_bytes_u64 > m_cqBufferCapacityBytes ||
         m_cqBufferedBytes > m_cqBufferCapacityBytes - pkt_bytes_u64)
     {
+        if (is_flare_credit)
+        {
+            ReleaseFlareCredit(send_ts, send_port, flare);
+            ++m_flareCreditWasted;
+        }
         ++m_drops;
         ++m_dropForwardCq;
         return;
     }
     if (!m_cq[send_port].Enqueue(send_ts, pkt_with_headers, /*cookie=*/0))
     {
+        if (is_flare_credit)
+        {
+            ReleaseFlareCredit(send_ts, send_port, flare);
+            ++m_flareCreditWasted;
+        }
         // Invalid slice id. CalendarQueue tracks this internally too;
         // mirroring into m_drops keeps tests checking one place.
         ++m_drops;

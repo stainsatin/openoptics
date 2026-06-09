@@ -3,11 +3,17 @@ import unittest
 from unittest.mock import patch
 
 from openoptics.backends.ns3.traffic import (
+    FlareConfig,
+    FlareStats,
+    FlareTrafficGenerator,
     TcpTrafficGenerator,
     UdpTrafficGenerator,
     parse_bitrate,
 )
-from tests.ns3_helpers import ns3_available, skip_if_no_ns3
+try:
+    from ns3_helpers import ns3_available, skip_if_no_ns3
+except ModuleNotFoundError:  # unittest module mode: tests.test_...
+    from tests.ns3_helpers import ns3_available, skip_if_no_ns3
 
 
 class RecordingBackend:
@@ -15,12 +21,18 @@ class RecordingBackend:
         self._nb_node = nb_node
         self._simulation_stop_s = simulation_stop_s
         self._next_traffic_port = 9000
+        self._next_flare_flow_id = 1
         self.calls = []
 
     def _allocate_traffic_port(self):
         port = self._next_traffic_port
         self._next_traffic_port += 1
         return port
+
+    def _allocate_flare_flow_id(self):
+        flow_id = self._next_flare_flow_id
+        self._next_flare_flow_id += 1
+        return flow_id
 
     def install_udp_flow(self, **kwargs):
         self.calls.append(("udp", kwargs))
@@ -37,6 +49,23 @@ class RecordingBackend:
     def install_udp_echo_flow(self, **kwargs):
         self.calls.append(("echo", kwargs))
         return ("echo-server", "echo-client")
+
+    def install_flare_flow(self, **kwargs):
+        self.calls.append(("flare", kwargs))
+        return ("flare-src", "flare-dst")
+
+    def flare_stats_for(self, spec):
+        return FlareStats(
+            flow_id=spec.flow_id,
+            src=spec.src,
+            dst=spec.dst,
+            fct_s=0.001,
+            throughput_bps=spec.size_bytes * 8 / 0.001,
+            data_packets_sent=spec.num_packets,
+            data_packets_received=spec.num_packets,
+            credits_sent=spec.num_packets,
+            credits_received=spec.num_packets,
+        )
 
 
 class UdpTrafficGeneratorTests(unittest.TestCase):
@@ -286,6 +315,96 @@ class TcpTrafficGeneratorTests(unittest.TestCase):
             TcpTrafficGenerator(backend).bulk(0, 1, size_bytes=0)
         with self.assertRaises(ValueError):
             TcpTrafficGenerator(backend).bulk(0, 1, chunk_size_bytes=0)
+
+
+class FlareTrafficGeneratorTests(unittest.TestCase):
+    def test_profiles_match_paper_defaults(self):
+        p55 = FlareConfig.from_profile("55us")
+        self.assertEqual(p55.credit_qsize_pkts, 60)
+        self.assertEqual(p55.shaping_thresh_pkts, 30)
+        self.assertEqual(p55.aeolus_thresh_pkts, 40)
+        self.assertEqual(p55.w_init, 1.0)
+        self.assertEqual(p55.target_loss, 0.1)
+
+        p15 = FlareConfig.from_profile("15us")
+        self.assertEqual(p15.credit_qsize_pkts, 16)
+        self.assertEqual(p15.shaping_thresh_pkts, 8)
+        self.assertEqual(p15.aeolus_thresh_pkts, 8)
+
+    def test_flare_flow_installs_credit_based_spec(self):
+        backend = RecordingBackend()
+        cfg = FlareConfig.from_profile("15us", mtu_bytes=512)
+
+        installed = (
+            FlareTrafficGenerator(backend, config=cfg)
+            .flow(0, 1, 1500, start_s=0.01, duration_s=0.1)
+            .install()
+        )
+
+        self.assertEqual(len(installed), 1)
+        self.assertEqual(installed[0].spec.protocol, "flare")
+        self.assertEqual(installed[0].spec.flow_id, 1)
+        self.assertEqual(installed[0].spec.port, 9000)
+        self.assertEqual(installed[0].spec.num_packets, 3)
+        mode, kwargs = backend.calls[0]
+        self.assertEqual(mode, "flare")
+        self.assertEqual(kwargs["src"], 0)
+        self.assertEqual(kwargs["dst"], 1)
+        self.assertEqual(kwargs["flow_id"], 1)
+        self.assertEqual(kwargs["size_bytes"], 1500)
+        self.assertEqual(kwargs["packet_size_bytes"], 512)
+        self.assertEqual(kwargs["config"].profile, "15us")
+
+    def test_flare_builder_defaults_are_applied(self):
+        backend = RecordingBackend()
+        gen = FlareTrafficGenerator(
+            backend,
+            start_s=0.2,
+            duration_s=0.3,
+            packet_size_bytes=256,
+            path_id=7,
+        )
+
+        gen.flow(0, 1, 1024).install()
+
+        _mode, kwargs = backend.calls[0]
+        self.assertEqual(kwargs["start_s"], 0.2)
+        self.assertEqual(kwargs["stop_s"], 0.5)
+        self.assertEqual(kwargs["packet_size_bytes"], 256)
+        self.assertEqual(kwargs["path_id"], 7)
+
+    def test_flare_common_patterns_assign_flow_ids_and_ports(self):
+        backend = RecordingBackend()
+
+        installed = (
+            FlareTrafficGenerator(backend)
+            .many_to_one([0, 1, 2], 2, 2048)
+            .install()
+        )
+
+        self.assertEqual(
+            [(call["flow_id"], call["port"], call["src"], call["dst"])
+             for _mode, call in backend.calls],
+            [(1, 9000, 0, 2), (2, 9001, 1, 2)],
+        )
+        stats = installed[0].stats()
+        self.assertIsInstance(stats, FlareStats)
+        self.assertEqual(stats.credits_sent, installed[0].spec.num_packets)
+
+    def test_flare_validation_errors_are_early(self):
+        backend = RecordingBackend()
+        gen = FlareTrafficGenerator(backend)
+
+        with self.assertRaises(ValueError):
+            gen.flow(0, 0, 1000)
+        with self.assertRaises(IndexError):
+            gen.flow(0, 99, 1000)
+        with self.assertRaises(ValueError):
+            gen.flow(0, 1, 0)
+        with self.assertRaises(ValueError):
+            FlareConfig.from_profile("missing")
+        with self.assertRaises(ValueError):
+            FlareConfig.from_profile("55us", target_loss=1.5)
 
 
 @skip_if_no_ns3
