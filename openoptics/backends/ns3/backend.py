@@ -149,6 +149,8 @@ class Ns3Backend(BackendBase):
             "flare_aeolus_thresh_pkts",
             "flare_w_init",
             "flare_target_loss",
+            "flare_congestion_threshold_percent",
+            "flare_tentative_threshold_percent",
         }
 
     def __init__(self) -> None:
@@ -312,6 +314,8 @@ class Ns3Backend(BackendBase):
             aeolus_thresh_pkts=backend_kwargs.get("flare_aeolus_thresh_pkts"),
             w_init=backend_kwargs.get("flare_w_init"),
             target_loss=backend_kwargs.get("flare_target_loss"),
+            congestion_threshold_percent=backend_kwargs.get("flare_congestion_threshold_percent"),
+            tentative_threshold_percent=backend_kwargs.get("flare_tentative_threshold_percent"),
         ).resolved()
 
         # Lazy import. cling's benign static-initializer noise is filtered
@@ -1445,6 +1449,8 @@ class Ns3Backend(BackendBase):
             app.SetFlareCreditQueueSizePkts(self._flare_config.credit_qsize_pkts)
             app.SetFlareShapingThresholdPkts(self._flare_config.shaping_thresh_pkts)
             app.SetFlareAeolusThresholdPkts(self._flare_config.aeolus_thresh_pkts)
+            app.SetFlareCongestionThreshold(self._flare_config.congestion_threshold_percent)
+            app.SetFlareTentativeThreshold(self._flare_config.tentative_threshold_percent)
             app.SetStartTime(ns.Seconds(0.0))
             self._tor_apps[tor_id] = app
 

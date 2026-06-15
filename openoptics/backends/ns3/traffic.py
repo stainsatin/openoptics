@@ -209,6 +209,8 @@ class FlareConfig:
     mtu_bytes: int = 1024
     retransmission_timeout_s: float = 0.0002
     initial_credit_pkts: Optional[int] = None
+    congestion_threshold_percent: int = 50
+    tentative_threshold_percent: int = 25
 
     @classmethod
     def from_profile(cls, profile: str = "55us", **overrides) -> "FlareConfig":

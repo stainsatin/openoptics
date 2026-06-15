@@ -146,6 +146,7 @@ class TorApp : public Application
     uint64_t GetDropSrEndNotDst() const;
     uint64_t GetDropSrTransitBadCur() const;
     uint64_t GetDropAdmFail() const;
+    uint64_t GetDropAeolusUnscheduled() const;
     uint64_t GetFlareCreditAdmitted() const;
     uint64_t GetFlareCreditDropped() const;
     uint64_t GetFlareCreditWasted() const;
@@ -154,6 +155,10 @@ class TorApp : public Application
     void SetFlareCreditQueueSizePkts(uint32_t pkts);
     void SetFlareShapingThresholdPkts(uint32_t pkts);
     void SetFlareAeolusThresholdPkts(uint32_t pkts);
+    void SetFlareCongestionThreshold(uint32_t percent);
+    uint32_t GetFlareCongestionThreshold() const;
+    void SetFlareTentativeThreshold(uint32_t percent);
+    uint32_t GetFlareTentativeThreshold() const;
 
     // Per-hop admission control. When on, HandleRoutedPacket walks
     // ``(dst, arrival_ts + offset)`` and forwards on the first entry
@@ -263,12 +268,15 @@ class TorApp : public Application
     uint64_t TimeUntilSliceStartUs(uint32_t slice) const;
     bool PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
                          FlareHeader* out) const;
+    void StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice);
     bool AdmitFlareCredit(uint32_t send_ts,
                           uint32_t send_port,
                           const FlareHeader& flare);
     void ReleaseFlareCredit(uint32_t send_ts,
                             uint32_t send_port,
                             const FlareHeader& flare);
+    void InitAdmissionProbTable();
+    double GetAdmissionProb(uint32_t remaining_hops) const;
 
     // Extract destination IP (as dotted-quad string) from a packet whose
     // head is an IPv4 header (dst is offset 16).
@@ -379,6 +387,7 @@ class TorApp : public Application
     uint64_t m_dropSrEndNotDst = 0;
     uint64_t m_dropSrTransitBadCur = 0;
     uint64_t m_dropAdmFail = 0;            // ADM-mode: no slot passed AdmCheck
+    uint64_t m_dropAeolusUnscheduled = 0;  // Aeolus: dropped unscheduled data
     uint64_t m_flareCreditAdmitted = 0;
     uint64_t m_flareCreditDropped = 0;
     uint64_t m_flareCreditWasted = 0;
@@ -397,6 +406,10 @@ class TorApp : public Application
     uint32_t m_flareCreditQsizePkts = 60;
     uint32_t m_flareShapingThreshPkts = 30;
     uint32_t m_flareAeolusThreshPkts = 40;
+    uint32_t m_flareCongestionThresholdPercent = 50;  // Congestion threshold (%)
+    uint32_t m_flareTentativeThresholdPercent = 25;   // Tentative credit threshold (%)
+    Ptr<UniformRandomVariable> m_flareAdmissionRng;   // 概率接纳随机数生成器
+    std::vector<double> m_flareAdmissionProbTable;    // P(h) = (1/2)^(h-1)
 
     // Uplink rate (bps). Must be positive by StartApplication (NS_ABORT).
     // No scalar bytes-this-slice counter is needed because absolute

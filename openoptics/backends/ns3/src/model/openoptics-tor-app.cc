@@ -16,6 +16,7 @@
 #include "ns3/node.h"
 #include "ns3/nstime.h"
 #include "ns3/simulator.h"
+#include "ns3/double.h"
 
 #include <algorithm>
 #include <sstream>
@@ -360,6 +361,7 @@ uint64_t TorApp::GetDropSrUplinkSize() const         { return m_dropSrUplinkSize
 uint64_t TorApp::GetDropSrEndNotDst() const          { return m_dropSrEndNotDst; }
 uint64_t TorApp::GetDropSrTransitBadCur() const      { return m_dropSrTransitBadCur; }
 uint64_t TorApp::GetDropAdmFail() const              { return m_dropAdmFail; }
+uint64_t TorApp::GetDropAeolusUnscheduled() const    { return m_dropAeolusUnscheduled; }
 uint64_t TorApp::GetFlareCreditAdmitted() const      { return m_flareCreditAdmitted; }
 uint64_t TorApp::GetFlareCreditDropped() const       { return m_flareCreditDropped; }
 uint64_t TorApp::GetFlareCreditWasted() const        { return m_flareCreditWasted; }
@@ -370,6 +372,10 @@ bool TorApp::GetAdmissionControl() const              { return m_admissionContro
 void TorApp::SetFlareCreditQueueSizePkts(uint32_t pkts) { m_flareCreditQsizePkts = pkts; }
 void TorApp::SetFlareShapingThresholdPkts(uint32_t pkts) { m_flareShapingThreshPkts = pkts; }
 void TorApp::SetFlareAeolusThresholdPkts(uint32_t pkts) { m_flareAeolusThreshPkts = pkts; }
+void TorApp::SetFlareCongestionThreshold(uint32_t percent) { m_flareCongestionThresholdPercent = percent; }
+uint32_t TorApp::GetFlareCongestionThreshold() const { return m_flareCongestionThresholdPercent; }
+void TorApp::SetFlareTentativeThreshold(uint32_t percent) { m_flareTentativeThresholdPercent = percent; }
+uint32_t TorApp::GetFlareTentativeThreshold() const { return m_flareTentativeThresholdPercent; }
 
 uint64_t
 TorApp::GetTotalQueueDepth() const
@@ -482,9 +488,36 @@ TorApp::DrainSlice(uint32_t slice)
         {
             const std::size_t pkt_bytes = pkt->GetSize();
             FlareHeader flare;
+            const bool has_flare = PeekFlareHeader(pkt, &flare);
             const bool is_flare_credit =
-                PeekFlareHeader(pkt, &flare) &&
-                flare.GetType() == FlareHeader::CREDIT;
+                has_flare && flare.GetType() == FlareHeader::CREDIT;
+            const bool is_flare_data =
+                has_flare && flare.GetType() == FlareHeader::DATA;
+
+            // Aeolus 主动丢弃：UNSCHEDULED data 包在队列过载时丢弃
+            if (is_flare_data && flare.GetControlCode() == FlareHeader::UNSCHEDULED)
+            {
+                // 计算当前 uplink 的 data 队列占用（简化：使用 CQ 字节数）
+                uint64_t data_queue_bytes = 0;
+                if (slice < m_cqBytesPerSlot.size() &&
+                    uplink < m_cqBytesPerSlot[slice].size())
+                {
+                    data_queue_bytes = m_cqBytesPerSlot[slice][uplink];
+                }
+                // 阈值：m_flareAeolusThreshPkts 转换为字节（假设 1024 字节/包）
+                uint64_t aeolus_thresh_bytes =
+                    static_cast<uint64_t>(m_flareAeolusThreshPkts) * 1024ULL;
+                if (data_queue_bytes > aeolus_thresh_bytes)
+                {
+                    // 主动丢弃 unscheduled 包
+                    m_cq[uplink].Dequeue(slice, &pkt, &cookie);
+                    RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
+                    ++m_drops;
+                    ++m_dropAeolusUnscheduled;
+                    continue;
+                }
+            }
+
             if (!CanFinishInActiveWindow(uplink, slice, pkt_bytes))
             {
                 if (m_linkFreeAt[uplink] > Simulator::Now())
@@ -640,6 +673,10 @@ TorApp::StartApplication()
     NS_ABORT_MSG_IF(m_cq.size() != m_uplinks.size(),
                     "TorApp: m_cq is out of sync with m_uplinks "
                     "(EnsureCalendarQueues invariant violated)");
+
+    // Initialize Flare probabilistic admission
+    InitAdmissionProbTable();
+
     ScheduleNextSliceBoundary();
 }
 
@@ -758,6 +795,45 @@ TorApp::PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
     return true;
 }
 
+void
+TorApp::StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice)
+{
+    // 从包中提取并修改 Flare 头的时间片字段
+    // 包结构：[IPv4][FlareHeader][Payload]
+
+    Ipv4Header ip;
+    if (pkt->GetSize() < ip.GetSerializedSize())
+    {
+        return;  // 包太小，不是有效的 Flare 包
+    }
+    pkt->RemoveHeader(ip);
+
+    FlareHeader flare;
+    if (pkt->GetSize() < flare.GetSerializedSize())
+    {
+        // 恢复 IP 头并返回
+        pkt->AddHeader(ip);
+        return;
+    }
+    pkt->RemoveHeader(flare);
+
+    // 检查是否是有效的 Flare 包
+    if (!flare.IsValid())
+    {
+        // 恢复头部并返回
+        pkt->AddHeader(flare);
+        pkt->AddHeader(ip);
+        return;
+    }
+
+    // 设置时间片
+    flare.SetTimeSlice(time_slice);
+
+    // 重新添加头部
+    pkt->AddHeader(flare);
+    pkt->AddHeader(ip);
+}
+
 bool
 TorApp::AdmitFlareCredit(uint32_t send_ts,
                          uint32_t send_port,
@@ -772,20 +848,63 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
     }
 
     uint32_t& occupancy = m_flareCreditPktsPerSlot[send_ts][send_port];
-    const uint32_t limit =
-        flare.GetRemainingHops() <= 1
-            ? std::max(m_flareShapingThreshPkts, m_flareAeolusThreshPkts)
-            : m_flareShapingThreshPkts;
-    if (occupancy >= m_flareCreditQsizePkts ||
-        (limit > 0 && occupancy >= limit))
+
+    // 1. 始终拒绝超过队列大小的包
+    if (occupancy >= m_flareCreditQsizePkts)
     {
         ++m_flareCreditDropped;
         ++m_drops;
         return false;
     }
-    ++occupancy;
-    ++m_flareCreditAdmitted;
-    return true;
+
+    const bool is_tentative =
+        (flare.GetType() == FlareHeader::TENTATIVE_CREDIT);
+
+    // 2. Tentative credit 只在队列极低时接纳
+    if (is_tentative)
+    {
+        const uint32_t tentative_thresh =
+            m_flareCreditQsizePkts * m_flareTentativeThresholdPercent / 100;
+        if (occupancy >= tentative_thresh)
+        {
+            ++m_flareCreditDropped;
+            ++m_drops;
+            return false;
+        }
+        // 通过 tentative 检查，接纳
+        ++occupancy;
+        ++m_flareCreditAdmitted;
+        return true;
+    }
+
+    // 3. Regular credit: 低于 congestion threshold 全部接纳
+    const uint32_t congestion_thresh =
+        m_flareCreditQsizePkts * m_flareCongestionThresholdPercent / 100;
+
+    if (occupancy < congestion_thresh)
+    {
+        ++occupancy;
+        ++m_flareCreditAdmitted;
+        return true;
+    }
+
+    // 4. Regular credit: 概率接纳（基于 remaining_hops）
+    const uint8_t hops = flare.GetRemainingHops();
+    const double admit_prob = GetAdmissionProb(hops);
+    const double rand_val = m_flareAdmissionRng->GetValue();
+
+    if (rand_val <= admit_prob)
+    {
+        ++occupancy;
+        ++m_flareCreditAdmitted;
+        return true;
+    }
+    else
+    {
+        ++m_flareCreditDropped;
+        ++m_drops;
+        return false;
+    }
 }
 
 void
@@ -802,6 +921,32 @@ TorApp::ReleaseFlareCredit(uint32_t send_ts,
             --occupancy;
         }
     }
+}
+
+void
+TorApp::InitAdmissionProbTable()
+{
+    // 预计算 P(h) = (1/2)^(h-1) for h = 1..8
+    m_flareAdmissionProbTable.clear();
+    m_flareAdmissionProbTable.push_back(1.0);  // h=0 (不应出现)
+    for (uint32_t h = 1; h <= 8; ++h)
+    {
+        m_flareAdmissionProbTable.push_back(std::pow(0.5, h - 1));
+    }
+
+    m_flareAdmissionRng = CreateObject<UniformRandomVariable>();
+    m_flareAdmissionRng->SetAttribute("Min", DoubleValue(0.0));
+    m_flareAdmissionRng->SetAttribute("Max", DoubleValue(1.0));
+}
+
+double
+TorApp::GetAdmissionProb(uint32_t remaining_hops) const
+{
+    if (remaining_hops < m_flareAdmissionProbTable.size())
+    {
+        return m_flareAdmissionProbTable[remaining_hops];
+    }
+    return std::pow(0.5, static_cast<double>(remaining_hops) - 1.0);
 }
 
 
@@ -834,15 +979,18 @@ TorApp::ReceiveFromHost(Ptr<NetDevice> /*device*/,
     uint32_t dst_node = ipIt->second;
     uint32_t arrival_ts = CurrentSlice();
 
+    // 为 Flare 包戳上时间片（用于 credit-data 路径对称）
+    Ptr<Packet> pkt_copy = packet->Copy();
+    StampFlareTimeSlice(pkt_copy, static_cast<uint8_t>(arrival_ts % 256));
+
     // Fast path: packet destined for a host directly attached to this ToR.
     // Shouldn't happen under typical topologies but handled for completeness.
     auto aadIt = m_arriveAtDst.find(dst_node);
     if (aadIt != m_arriveAtDst.end() && dst_node == m_torId)
     {
-        Ptr<Packet> pkt = packet->Copy();
         if (m_hostDev)
         {
-            m_hostDev->Send(pkt, m_hostDev->GetBroadcast(), protocol);
+            m_hostDev->Send(pkt_copy, m_hostDev->GetBroadcast(), protocol);
         }
         ++m_deliveredToHost;
         return;
@@ -851,16 +999,15 @@ TorApp::ReceiveFromHost(Ptr<NetDevice> /*device*/,
     // Source-routing has priority: if an SR entry exists for this
     // (dst, arrival_ts), stamp the hop list and dispatch. Otherwise
     // fall back to per-hop.
-    if (TrySourceRoutingIngress(packet, dst_node, arrival_ts, protocol))
+    if (TrySourceRoutingIngress(pkt_copy, dst_node, arrival_ts, protocol))
     {
         return;
     }
 
     // Prepend the OpenOptics header and route via per-hop table.
-    Ptr<Packet> pkt = packet->Copy();
     OpenOpticsHeader hdr(dst_node, arrival_ts);
-    pkt->AddHeader(hdr);
-    HandleRoutedPacket(pkt, dst_node, arrival_ts, protocol);
+    pkt_copy->AddHeader(hdr);
+    HandleRoutedPacket(pkt_copy, dst_node, arrival_ts, protocol);
 }
 
 void

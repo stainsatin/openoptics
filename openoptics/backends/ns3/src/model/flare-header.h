@@ -21,14 +21,16 @@ class FlareHeader : public Header
     {
         DATA = 1,
         CREDIT = 2,
-        NACK = 3,
-        CONTROL = 4,
+        TENTATIVE_CREDIT = 3,
+        NACK = 4,
+        CONTROL = 5,
     };
 
     enum ControlCode : uint8_t
     {
         NONE = 0,
         FLOW_DONE = 1,
+        UNSCHEDULED = 2,
     };
 
     FlareHeader();
@@ -54,6 +56,8 @@ class FlareHeader : public Header
     uint16_t GetPathId() const;
     void SetRemainingHops(uint8_t hops);
     uint8_t GetRemainingHops() const;
+    void SetTimeSlice(uint8_t ts);
+    uint8_t GetTimeSlice() const;
     bool IsValid() const;
 
     uint32_t GetSerializedSize() const override;
@@ -74,7 +78,7 @@ class FlareHeader : public Header
     uint32_t m_dstNode;
     uint16_t m_pathId;
     uint8_t m_remainingHops;
-    uint8_t m_reserved;
+    uint8_t m_timeSlice;
 };
 
 } // namespace openoptics

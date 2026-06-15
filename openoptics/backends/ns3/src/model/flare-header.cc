@@ -34,7 +34,7 @@ FlareHeader::FlareHeader()
       m_dstNode(0),
       m_pathId(0),
       m_remainingHops(0),
-      m_reserved(0)
+      m_timeSlice(0)
 {
 }
 
@@ -56,6 +56,8 @@ void FlareHeader::SetPathId(uint16_t path_id) { m_pathId = path_id; }
 uint16_t FlareHeader::GetPathId() const { return m_pathId; }
 void FlareHeader::SetRemainingHops(uint8_t hops) { m_remainingHops = hops; }
 uint8_t FlareHeader::GetRemainingHops() const { return m_remainingHops; }
+void FlareHeader::SetTimeSlice(uint8_t ts) { m_timeSlice = ts; }
+uint8_t FlareHeader::GetTimeSlice() const { return m_timeSlice; }
 bool FlareHeader::IsValid() const { return m_magic == kMagic; }
 
 uint32_t
@@ -77,7 +79,7 @@ FlareHeader::Serialize(Buffer::Iterator start) const
     start.WriteHtonU32(m_dstNode);
     start.WriteHtonU16(m_pathId);
     start.WriteU8(m_remainingHops);
-    start.WriteU8(m_reserved);
+    start.WriteU8(m_timeSlice);
 }
 
 uint32_t
@@ -93,7 +95,7 @@ FlareHeader::Deserialize(Buffer::Iterator start)
     m_dstNode = start.ReadNtohU32();
     m_pathId = start.ReadNtohU16();
     m_remainingHops = start.ReadU8();
-    m_reserved = start.ReadU8();
+    m_timeSlice = start.ReadU8();
     return GetSerializedSize();
 }
 
@@ -104,7 +106,8 @@ FlareHeader::Print(std::ostream& os) const
        << " flow=" << m_flowId
        << " seq=" << m_seq
        << " epoch=" << m_creditEpoch
-       << " remaining_hops=" << static_cast<int>(m_remainingHops);
+       << " remaining_hops=" << static_cast<int>(m_remainingHops)
+       << " time_slice=" << static_cast<int>(m_timeSlice);
 }
 
 } // namespace openoptics

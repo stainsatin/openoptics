@@ -9,6 +9,7 @@
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/uinteger.h"
+#include "ns3/double.h"
 
 #include <algorithm>
 
@@ -239,7 +240,7 @@ FlareHostApp::HandleFlarePacket(Ptr<Packet> pkt)
     switch (flare.GetType())
     {
     case FlareHeader::CREDIT:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
         break;
     case FlareHeader::DATA:
         HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
@@ -248,7 +249,7 @@ FlareHostApp::HandleFlarePacket(Ptr<Packet> pkt)
         HandleControl(flare.GetFlowId(), flare.GetControlCode());
         break;
     case FlareHeader::NACK:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
         break;
     default:
         break;
@@ -359,8 +360,22 @@ FlareHostApp::OnRetransmissionTimeout(uint32_t flow_id, uint32_t seq)
 void
 FlareHostApp::SendCredit(FlowState& flow, uint32_t seq)
 {
+    // 判断是 regular 还是 tentative
+    if (!m_flareAdmissionRng)
+    {
+        m_flareAdmissionRng = CreateObject<UniformRandomVariable>();
+        m_flareAdmissionRng->SetAttribute("Min", DoubleValue(0.0));
+        m_flareAdmissionRng->SetAttribute("Max", DoubleValue(1.0));
+    }
+    double rand_val = m_flareAdmissionRng->GetValue();
+    bool is_tentative = (rand_val > flow.targetCreditRate);
+
+    uint8_t pkt_type = is_tentative
+        ? FlareHeader::TENTATIVE_CREDIT
+        : FlareHeader::CREDIT;
+
     ++flow.creditsSent;
-    SendFlarePacket(flow, seq, FlareHeader::CREDIT, FlareHeader::NONE, 0);
+    SendFlarePacket(flow, seq, pkt_type, FlareHeader::NONE, 0);
 }
 
 void
@@ -370,9 +385,20 @@ FlareHostApp::SendData(FlowState& flow, uint32_t seq, bool retransmission)
     {
         ++flow.retransmissions;
     }
+
+    // Fast Start：第一个 BDP 的数据标记为 UNSCHEDULED
+    uint64_t bdp_estimate = static_cast<uint64_t>(flow.initialCreditPkts) *
+                            static_cast<uint64_t>(flow.packetSizeBytes);
+    uint64_t sent_bytes = static_cast<uint64_t>(seq) * static_cast<uint64_t>(flow.packetSizeBytes);
+    bool is_unscheduled = (sent_bytes < bdp_estimate);
+
+    uint8_t control_code = is_unscheduled
+        ? FlareHeader::UNSCHEDULED
+        : FlareHeader::NONE;
+
     ++flow.dataSent;
     flow.sentSeqs.insert(seq);
-    SendFlarePacket(flow, seq, FlareHeader::DATA, FlareHeader::NONE,
+    SendFlarePacket(flow, seq, FlareHeader::DATA, control_code,
                     PacketPayloadBytes(flow, seq));
     Simulator::Schedule(m_retransmissionTimeout,
                         &FlareHostApp::OnRetransmissionTimeout, this,
@@ -406,7 +432,73 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
     flare.SetSrcNode(m_nodeId);
     flare.SetDstNode(flow.peerNode);
     flare.SetPathId(static_cast<uint16_t>(flow.pathId));
-    flare.SetRemainingHops(1);
+
+    // Hop Jittering：仅对 CREDIT 包应用
+    uint8_t actual_hops = 1;  // 默认值
+    if (packet_type == FlareHeader::CREDIT ||
+        packet_type == FlareHeader::TENTATIVE_CREDIT)
+    {
+        // 估算 BDP：初始窗口 × 包大小作为启发式
+        uint64_t bdp_estimate = static_cast<uint64_t>(flow.initialCreditPkts) *
+                                static_cast<uint64_t>(flow.packetSizeBytes);
+        uint64_t delivered_bytes = flow.receivedSeqs.size() * flow.packetSizeBytes;
+        double jitter_ratio = bdp_estimate > 0
+            ? static_cast<double>(delivered_bytes) / static_cast<double>(bdp_estimate)
+            : 0.0;
+
+        // 从 pathLengthHistogram 获取最常见的 hop count
+        uint32_t max_count = 0;
+        for (const auto& kv : flow.pathLengthHistogram)
+        {
+            if (kv.second > max_count)
+            {
+                max_count = kv.second;
+                actual_hops = static_cast<uint8_t>(kv.first);
+            }
+        }
+        if (actual_hops == 0) actual_hops = 1;  // 保底
+
+        // 50% 概率应用 jittering
+        if (!m_flareAdmissionRng)
+        {
+            m_flareAdmissionRng = CreateObject<UniformRandomVariable>();
+            m_flareAdmissionRng->SetAttribute("Min", DoubleValue(0.0));
+            m_flareAdmissionRng->SetAttribute("Max", DoubleValue(1.0));
+        }
+        double rand_val = m_flareAdmissionRng->GetValue();
+        if (rand_val < 0.5)
+        {
+            if (jitter_ratio < 4.0 && actual_hops > 1)
+            {
+                actual_hops -= 1;  // 短流减 1
+            }
+            else if (jitter_ratio > 16.0 && actual_hops < 8)
+            {
+                actual_hops += 1;  // 长流加 1
+            }
+        }
+    }
+    flare.SetRemainingHops(actual_hops);
+
+    // 设置时间片：DATA 包继承对应 credit 的时间片
+    if (packet_type == FlareHeader::DATA)
+    {
+        auto it = flow.creditTimeSliceMap.find(seq);
+        if (it != flow.creditTimeSliceMap.end())
+        {
+            flare.SetTimeSlice(it->second);
+        }
+        else
+        {
+            flare.SetTimeSlice(0);  // 默认值
+        }
+    }
+    else
+    {
+        // CREDIT 包的时间片将由 ToR 在入口处设置
+        flare.SetTimeSlice(0);
+    }
+
     pkt->AddHeader(flare);
 
     Ipv4Header ip;
@@ -420,7 +512,7 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
 }
 
 void
-FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops)
+FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint8_t time_slice)
 {
     FlowState* flow = FindSenderFlow(flow_id);
     if (!flow || flow->done)
@@ -433,6 +525,10 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
     }
     ++flow->creditsReceived;
     ++flow->pathLengthHistogram[remaining_hops];
+
+    // 记录这个序列号对应的时间片
+    flow->creditTimeSliceMap[seq] = time_slice;
+
     SendEligibleData(flow_id);
 }
 
@@ -526,6 +622,49 @@ FlareHostApp::PacketPayloadBytes(const FlowState& flow, uint32_t seq) const
         return 0;
     }
     return std::min(flow.packetSizeBytes, flow.sizeBytes - sent);
+}
+
+void
+FlareHostApp::AdjustCreditRate(FlowState& flow, bool credit_dropped)
+{
+    if (credit_dropped)
+    {
+        ++flow.lossCountThisSlice;
+    }
+
+    // 检测时间片边界（简化：每个 retransmission timeout 周期）
+    Time now = Simulator::Now();
+    if (now - flow.lastSliceChange > m_retransmissionTimeout)
+    {
+        // 根据 loss 调整 rate
+        if (flow.lossCountThisSlice > 0)
+        {
+            flow.targetCreditRate *= (1.0 - m_targetLoss);  // 减速
+        }
+        else
+        {
+            flow.targetCreditRate = std::min(1.0,
+                flow.targetCreditRate * (1.0 + m_targetLoss));  // 加速
+        }
+
+        // 重置计数
+        flow.lossCountThisSlice = 0;
+        flow.lastSliceChange = now;
+    }
+}
+
+void
+FlareHostApp::OnPathChange(FlowState& flow, uint8_t new_path_length)
+{
+    // 路径变化时的 rate 补偿
+    double old_prob = std::pow(0.5, static_cast<double>(flow.lastPathLength) - 1.0);
+    double new_prob = std::pow(0.5, static_cast<double>(new_path_length) - 1.0);
+    double delta = new_prob - old_prob;
+
+    flow.targetCreditRate = std::min(1.0,
+        std::max(0.1, flow.targetCreditRate + delta));
+
+    flow.lastPathLength = new_path_length;
 }
 
 uint64_t FlareHostApp::GetDataPacketsSent(uint32_t flow_id) const

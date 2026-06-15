@@ -22,6 +22,7 @@ venv*
 examples/*.csv
 examples/*.json
 examples/*.pdf
+results/*
 
 # uv
 .ruff_cache

@@ -2,8 +2,9 @@
 
 The goal is not to reproduce every paper figure in one script. This is the
 next layer above unit tests: quick, repeatable Flare scenarios that exercise
-single-flow completion, incast pressure, and credit queue pressure under the
-existing OpenOptics ns-3 harness.
+single-flow completion, incast pressure, dual-bottleneck pressure, credit
+queue pressure, slice switching, path mismatch, and hop-count diversity under
+the existing OpenOptics ns-3 harness.
 
 Examples:
 
@@ -24,8 +25,41 @@ from openoptics import OpticalRouting, OpticalTopo, Toolbox
 from openoptics.backends.ns3.traffic import FlareConfig, FlareStats
 
 
+_SCENARIOS = (
+    "single",
+    "incast",
+    "credit-pressure",
+    "dual-bottleneck",
+    "path-mismatch",
+    "slice-switch",
+    "hop-count",
+)
+
+
+def _slice_us(profile: str) -> int:
+    return 55 if profile == "55us" else 15
+
+
+def _effective_topology(args) -> str:
+    if args.topology != "auto":
+        return args.topology
+    if args.scenario in {"path-mismatch", "hop-count"}:
+        return "opera"
+    return "round-robin"
+
+
+def _effective_routing(args) -> str:
+    if args.routing != "auto":
+        return args.routing
+    if args.scenario in {"path-mismatch", "hop-count"}:
+        return "hoho"
+    return "direct"
+
+
 def _build_network(args):
-    slice_us = 55 if args.profile == "55us" else 15
+    slice_us = _slice_us(args.profile)
+    topology = _effective_topology(args)
+    routing = _effective_routing(args)
     net = Toolbox.BaseNetwork(
         name=f"ns3_flare_{args.scenario}_{args.profile}",
         backend="ns3",
@@ -40,13 +74,13 @@ def _build_network(args):
         snapshot_interval_us=max(1, slice_us),
         flare_profile=args.profile,
     )
-    if args.topology == "opera":
+    if topology == "opera":
         topo = OpticalTopo.opera(nb_node=args.nodes, nb_link=args.links)
     else:
         topo = OpticalTopo.round_robin(nb_node=args.nodes)
     net.deploy_topo(topo)
 
-    if args.routing == "hoho":
+    if routing == "hoho":
         paths = OpticalRouting.routing_hoho(net.get_topo())
     else:
         paths = OpticalRouting.routing_direct(net.get_topo())
@@ -77,6 +111,62 @@ def _install_flows(net, args):
             gen.flow(0, dst, args.flow_size, start_s=args.start,
                      duration_s=args.duration, packet_size_bytes=args.mtu,
                      name=f"pressure-{i}")
+    elif args.scenario == "dual-bottleneck":
+        if args.nodes < 4:
+            raise ValueError("dual-bottleneck requires --nodes >= 4")
+        pairs = [(0, 2), (1, 3)]
+        for i in range(args.flows):
+            src, dst = pairs[i % len(pairs)]
+            gen.flow(src, dst, args.flow_size, start_s=args.start,
+                     duration_s=args.duration, packet_size_bytes=args.mtu,
+                     name=f"dual-{i}-{src}-{dst}")
+    elif args.scenario == "path-mismatch":
+        if args.nodes < 4:
+            raise ValueError("path-mismatch requires --nodes >= 4")
+        # Stagger flows across several slice boundaries on an Opera/HoHo
+        # default. This stresses credits that were admitted under one
+        # slice/path but whose data may arrive after the topology changes.
+        slice_s = _slice_us(args.profile) / 1e6
+        pairs = [(0, args.nodes // 2), (args.nodes // 2, 1), (1, args.nodes - 1)]
+        for i in range(args.flows):
+            src, dst = pairs[i % len(pairs)]
+            gen.flow(src, dst, args.flow_size,
+                     start_s=args.start + (i % 4) * slice_s * 0.75,
+                     duration_s=args.duration,
+                     packet_size_bytes=args.mtu,
+                     name=f"mismatch-{i}-{src}-{dst}")
+    elif args.scenario == "slice-switch":
+        if args.nodes < 2:
+            raise ValueError("slice-switch requires --nodes >= 2")
+        # Launch around the active slice boundary to expose late-rollover
+        # and credit refresh behavior.
+        slice_s = _slice_us(args.profile) / 1e6
+        offsets = (0.05, 0.85, 1.05, 1.85)
+        for i in range(args.flows):
+            gen.flow(0, min(1, args.nodes - 1), args.flow_size,
+                     start_s=args.start + offsets[i % len(offsets)] * slice_s,
+                     duration_s=args.duration,
+                     packet_size_bytes=args.mtu,
+                     name=f"slice-{i}")
+    elif args.scenario == "hop-count":
+        if args.nodes < 4:
+            raise ValueError("hop-count requires --nodes >= 4")
+        # Use a mix of near/far pairs. With Opera/HoHo defaults this tends
+        # to exercise direct and relayed paths without hard-coding topology
+        # internals into the workload generator.
+        pairs = [
+            (0, 1),
+            (0, args.nodes // 2),
+            (1, args.nodes - 1),
+            (args.nodes // 2, args.nodes - 1),
+        ]
+        for i, (src, dst) in enumerate(pairs[:args.flows]):
+            if src != dst:
+                gen.flow(src, dst, args.flow_size,
+                         start_s=args.start + i * _slice_us(args.profile) / 1e6,
+                         duration_s=args.duration,
+                         packet_size_bytes=args.mtu,
+                         name=f"hop-{i}-{src}-{dst}")
     else:
         raise ValueError(f"unknown scenario {args.scenario!r}")
     return gen.install()
@@ -121,14 +211,75 @@ def _write_csv(path: Path, rows: Iterable[dict]) -> None:
         writer.writerows(rows)
 
 
+def _finite(values):
+    return [v for v in values if isinstance(v, (int, float)) and v == v]
+
+
+def _percentile(values, pct: float):
+    values = sorted(_finite(values))
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    rank = (len(values) - 1) * pct
+    lo = int(rank)
+    hi = min(lo + 1, len(values) - 1)
+    weight = rank - lo
+    return values[lo] * (1.0 - weight) + values[hi] * weight
+
+
+def _safe_ratio(num: float, den: float):
+    return None if den == 0 else num / den
+
+
+def _summarize_rows(args, rows: list[dict]) -> dict:
+    total_credits_sent = sum(r["credits_sent"] for r in rows)
+    total_credits_admitted = sum(r["credits_admitted"] for r in rows)
+    total_credits_dropped = sum(r["credits_dropped"] for r in rows)
+    total_credits_wasted = sum(r["credits_wasted"] for r in rows)
+    completed_rows = [
+        r for r in rows
+        if r["fct_s"] == r["fct_s"] and r["fct_s"] > 0
+    ]
+    fcts = [r["fct_s"] for r in completed_rows]
+    return {
+        "scenario": args.scenario,
+        "profile": args.profile,
+        "topology": _effective_topology(args),
+        "routing": _effective_routing(args),
+        "nodes": args.nodes,
+        "links": args.links,
+        "flow_count": len(rows),
+        "completed_flow_count": len(completed_rows),
+        "completion_fraction": _safe_ratio(len(completed_rows), len(rows)),
+        "fct_median_s": _percentile(fcts, 0.50),
+        "fct_p95_s": _percentile(fcts, 0.95),
+        "fct_p99_s": _percentile(fcts, 0.99),
+        "throughput_sum_bps": sum(_finite([r["throughput_bps"] for r in rows])),
+        "total_data_packets_sent": sum(r["data_packets_sent"] for r in rows),
+        "total_data_packets_received": sum(r["data_packets_received"] for r in rows),
+        "total_credits_sent": total_credits_sent,
+        "total_credits_received": sum(r["credits_received"] for r in rows),
+        "total_credits_admitted": total_credits_admitted,
+        "total_credits_dropped": total_credits_dropped,
+        "total_credits_wasted": total_credits_wasted,
+        "credit_drop_fraction": _safe_ratio(total_credits_dropped, total_credits_sent),
+        "credit_waste_fraction": _safe_ratio(total_credits_wasted, total_credits_admitted),
+        "total_retransmissions": sum(r["retransmissions"] for r in rows),
+        "total_timeouts": sum(r["timeouts"] for r in rows),
+        "total_duplicate_data": sum(r["duplicate_data"] for r in rows),
+        "total_duplicate_credits": sum(r["duplicate_credits"] for r in rows),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scenario", choices=["single", "incast", "credit-pressure"],
-                        default="single")
+    parser.add_argument("--scenario", choices=_SCENARIOS, default="single")
     parser.add_argument("--profile", choices=["55us", "15us"], default="55us")
-    parser.add_argument("--topology", choices=["round-robin", "opera"],
-                        default="round-robin")
-    parser.add_argument("--routing", choices=["direct", "hoho"], default="direct")
+    parser.add_argument("--topology", choices=["auto", "round-robin", "opera"],
+                        default="auto")
+    parser.add_argument("--routing", choices=["auto", "direct", "hoho"],
+                        default="auto")
     parser.add_argument("--nodes", type=int, default=4)
     parser.add_argument("--links", type=int, default=1)
     parser.add_argument("--flow-size", type=int, default=64_000)
@@ -158,22 +309,7 @@ def main(argv=None):
         if stats is not None:
             rows.append(_stats_to_row(stats))
 
-    summary = {
-        "scenario": args.scenario,
-        "profile": args.profile,
-        "topology": args.topology,
-        "routing": args.routing,
-        "nodes": args.nodes,
-        "links": args.links,
-        "flow_count": len(rows),
-        "total_data_packets_sent": sum(r["data_packets_sent"] for r in rows),
-        "total_data_packets_received": sum(r["data_packets_received"] for r in rows),
-        "total_credits_sent": sum(r["credits_sent"] for r in rows),
-        "total_credits_received": sum(r["credits_received"] for r in rows),
-        "total_credits_admitted": sum(r["credits_admitted"] for r in rows),
-        "total_credits_dropped": sum(r["credits_dropped"] for r in rows),
-        "total_credits_wasted": sum(r["credits_wasted"] for r in rows),
-    }
+    summary = _summarize_rows(args, rows)
     payload = {"summary": summary, "flows": rows}
     _write_json(args.output, payload)
     if args.csv is not None:
