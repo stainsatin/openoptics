@@ -23,6 +23,7 @@ examples/*.csv
 examples/*.json
 examples/*.pdf
 results/*
+plots/*
 
 # uv
 .ruff_cache

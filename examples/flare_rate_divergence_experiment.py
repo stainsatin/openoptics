@@ -11,7 +11,7 @@ Step 4: Analyze correlation between rate allocation and FCT
 Usage:
     python3 examples/flare_rate_divergence_experiment.py --senders 16 --flow-size 65536
     python3 examples/flare_rate_divergence_experiment.py --senders 32 --profile 15us --output results/
-    python3 examples/flare_rate_divergence_experiment.py --senders 32 --flow-size 65536 --profile 55us --output results/rate_div_32
+    python3 examples/flare_rate_divergence_experiment.py --senders 32 --flow-size 1048576 --profile 55us --output results/rate_div_32
 """
 
 import argparse
@@ -51,7 +51,7 @@ def build_incast_network(nb_senders: int, profile: str, stop_s: float, **flare_k
     )
 
     # Deploy round-robin topology
-    net.deploy_topo(OpticalTopo.round_robin(nb_node=nb_node))
+    net.deploy_topo(OpticalTopo.opera(nb_node=nb_node, nb_link=1))
 
     # Deploy HoHo routing as requested
     paths = OpticalRouting.routing_hoho(net.get_topo())
@@ -234,9 +234,9 @@ def main(argv=None):
                        help="MTU size in bytes")
     parser.add_argument("--start", type=float, default=0.0001,
                        help="Flow start time in seconds")
-    parser.add_argument("--duration", type=float, default=0.05,
-                       help="Flow duration in seconds")
-    parser.add_argument("--stop", type=float, default=0.1,
+    parser.add_argument("--duration", type=float, default=None,
+                       help="Flow duration in seconds (default: None, use stop_s)")
+    parser.add_argument("--stop", type=float, default=0.5,
                        help="Simulation stop time in seconds")
     parser.add_argument("--output", type=Path, default=Path("results/rate_divergence"),
                        help="Output directory for results")

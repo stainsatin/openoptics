@@ -295,7 +295,7 @@ def main(argv=None):
     parser.add_argument("--ocs-bw", type=float, default=100.0)
     parser.add_argument("--host-bw", type=float, default=100.0)
     parser.add_argument("--dashboard", action="store_true")
-    parser.add_argument("--output", type=Path, default=Path("flare_microbench.json"))
+    parser.add_argument("--output", type=Path, default=Path("results/flare_microbench.json"))
     parser.add_argument("--csv", type=Path, default=None)
     args = parser.parse_args(argv)
 
