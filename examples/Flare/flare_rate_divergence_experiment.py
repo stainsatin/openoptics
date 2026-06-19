@@ -50,7 +50,7 @@ def build_incast_network(nb_senders: int, profile: str, stop_s: float, **flare_k
         **flare_kwargs
     )
 
-    # Deploy round-robin topology
+    # Deploy opera topology
     net.deploy_topo(OpticalTopo.opera(nb_node=nb_node, nb_link=1))
 
     # Deploy HoHo routing as requested
