@@ -41,7 +41,6 @@ import concurrent.futures
 from functools import partial
 
 from openoptics import OpticalTopo, OpticalRouting, Toolbox
-import networkx as nx
 
 
 @dataclass
@@ -87,23 +86,46 @@ class PathDiversityMetrics:
     multipath_benefit_score: float  # 多路径收益评分 (0-1)
 
 
-def extract_edges_from_path(node_list: List[int]) -> List[Tuple[int, int]]:
-    """从节点序列（例如 [0, 7, 5, 2]）提取边列表"""
+def extract_edges_from_path(path) -> List[Tuple[int, int]]:
+    """从 Path 对象提取边列表"""
     edges = []
-    if not node_list or len(node_list) < 2:
-        return edges
-    
-    for i in range(len(node_list) - 1):
-        # 排序以保证 (u, v) 和 (v, u) 被视为同一条边
-        edge = tuple(sorted([node_list[i], node_list[i+1]]))
-        edges.append(edge)
+
+    for i, step in enumerate(path.steps):
+        if step.step_type == "port":
+            # 这是一个传输步骤
+            if i > 0:
+                prev_step = path.steps[i-1]
+                if hasattr(prev_step, 'send_node') and hasattr(step, 'send_node'):
+                    edge = tuple(sorted([prev_step.send_node, step.send_node]))
+                    edges.append(edge)
+
+    # 如果没有提取到边，尝试从 steps 直接构造
+    if not edges and len(path.steps) > 0:
+        current_node = path.src
+        for step in path.steps:
+            if hasattr(step, 'send_node') and step.send_node is not None:
+                if step.send_node != current_node:
+                    edge = tuple(sorted([current_node, step.send_node]))
+                    edges.append(edge)
+                    current_node = step.send_node
+
     return edges
 
-def count_hops_from_path(node_list: List[int]) -> int:
-    """计算路径跳数（节点数 - 1）"""
-    if not node_list or len(node_list) < 2:
-        return 0
-    return len(node_list) - 1
+
+def count_hops_from_path(path) -> int:
+    """计算路径跳数（传输边的数量）"""
+    hops = 0
+    for step in path.steps:
+        if step.step_type == "port":  # 传输步骤
+            hops += 1
+
+    # 如果没有 step_type，根据 steps 数量估算
+    if hops == 0:
+        # 简化估算：跳数 ≈ 有效 steps 数量
+        hops = sum(1 for s in path.steps if hasattr(s, 'send_node') and s.send_node is not None)
+
+    return hops
+
 
 def compute_edge_disjoint_rate(paths: List[PathInfo]) -> float:
     """计算一组路径的边不相交比例"""
@@ -138,7 +160,7 @@ def compute_edge_disjoint_rate(paths: List[PathInfo]) -> float:
 
     return unique_edge_count / total_edges
 
-def _worker_find_paths_for_src(src: int, nodes: List[int], slice_to_topo: Dict[int, nx.Graph], max_hop: int = 50) -> List[Tuple[int, List[int]]]:
+def _worker_find_paths_for_src(src: int, nodes: List[int], slice_to_topo: Dict[int, nx.Graph], max_hop: int = 50) -> List:
     """
     多进程的 Worker 函数：计算从指定 src 到所有其他节点的可行路径。
     注意：此函数必须定义在顶层作用域，以便 pickle 序列化传给子进程。
@@ -147,196 +169,105 @@ def _worker_find_paths_for_src(src: int, nodes: List[int], slice_to_topo: Dict[i
     for dst in nodes:
         if src == dst:
             continue
-        for ts, topo in slice_to_topo.items():
-            try:
-                # 基础优化：使用 extend 代替 +，避免全量内存拷贝
-                # found_paths = OpticalRouting.find_n_hop_path_node_pair(slice_to_topo, src, dst, max_hop)
-                found_paths = nx.all_simple_paths(topo, source=src, target=dst, cutoff=max_hop)
-                for p in found_paths:
-                    local_paths.append((ts, p))
-            except Exception as e:
-                # 防止某一对节点没有路径导致整个进程崩溃
-                # logging.debug(f"Path search failed for {src}->{dst}: {e}")
-                pass
+        try:
+            # 基础优化：使用 extend 代替 +，避免全量内存拷贝
+            # found_paths = OpticalRouting.find_n_hop_path_node_pair(slice_to_topo, src, dst, max_hop)
+            found_paths = nx.all_simple_paths(slice_to_topo[1], source=src, target=dst, cutoff=max_hop)
+            local_paths.extend(found_paths)
+        except Exception as e:
+            # 防止某一对节点没有路径导致整个进程崩溃
+            # logging.debug(f"Path search failed for {src}->{dst}: {e}")
+            pass
             
     return local_paths
 
-def find_all_time_expanded_paths(slice_to_topo: Dict[int, nx.Graph],
-                                  src: int, dst: int,
-                                  max_hop: int = 8,
-                                  max_wait: int = 2) -> List[Tuple[int, List[int], int]]:
-    """
-    找到从 src 到 dst 的所有可行路径（考虑时间片轮转）
-
-    借鉴 find_n_hop_path_node_pair 的时间片轮转逻辑，但枚举所有路径而非只找最短路径。
-
-    反向搜索逻辑：
-    - 从 dst 在 dst_arrival_ts 开始
-    - 倒退时间，查找能够到达当前节点的前驱节点
-    - 直到到达 src
-
-    Args:
-        slice_to_topo: 时间片到拓扑的映射
-        src: 源节点
-        dst: 目的节点
-        max_hop: 最大跳数
-        max_wait: 最大等待时间片数（在中间节点 hop-off）
-
-    Returns:
-        List of (arrival_ts, node_sequence, num_waits)
-    """
-    import queue
-
-    nb_ts = len(slice_to_topo)
-    all_paths = []
-
-    # 对每个可能的到达时间片进行搜索
-    for dst_arrival_ts in range(nb_ts):
-        # 使用 BFS 搜索所有可行路径
-        # 状态：(current_node, current_ts, path_nodes, num_waits, visited_states)
-        search_queue = queue.Queue()
-        search_queue.put((dst, dst_arrival_ts, [dst], 0, {(dst, dst_arrival_ts)}))
-
-        while not search_queue.empty():
-            cur_node, cur_ts, path_nodes, num_waits, visited = search_queue.get()
-
-            # 如果当前节点就是源节点，找到一条完整路径
-            if cur_node == src:
-                # 反转路径（因为是从 dst 回溯到 src）
-                complete_path = list(reversed(path_nodes))
-                all_paths.append((dst_arrival_ts, complete_path, num_waits))
-                continue
-
-            # 限制条件检查
-            if len(path_nodes) > max_hop + 1:  # +1 because path includes src and dst
-                continue
-            if num_waits > max_wait:
-                continue
-
-            # 探索前一个时间片的拓扑
-            # 包在 prev_ts 时从某个邻居传输，在 cur_ts 到达 cur_node
-            prev_ts = (cur_ts - 1 + nb_ts) % nb_ts
-
-            # 情况1: 从邻居节点传输到当前节点（不等待）
-            # 在 prev_ts 时间片，查找与 cur_node 相连的邻居
-            if prev_ts in slice_to_topo and slice_to_topo[prev_ts].has_node(cur_node):
-                for neighbor in slice_to_topo[prev_ts].neighbors(cur_node):
-                    state = (neighbor, prev_ts)
-                    if state not in visited and neighbor not in path_nodes:  # 避免环路
-                        new_visited = visited.copy()
-                        new_visited.add(state)
-                        search_queue.put((
-                            neighbor,
-                            prev_ts,
-                            path_nodes + [neighbor],
-                            num_waits,
-                            new_visited
-                        ))
-
-            # 情况2: 在当前节点等待一个时间片（hop-off）
-            if num_waits < max_wait:
-                state = (cur_node, prev_ts)
-                if state not in visited:
-                    new_visited = visited.copy()
-                    new_visited.add(state)
-                    search_queue.put((
-                        cur_node,
-                        prev_ts,
-                        path_nodes,
-                        num_waits + 1,
-                        new_visited
-                    ))
-
-    return all_paths
-
-
 def analyze_path_diversity(nb_node: int, nb_link: int = 1,
-                           time_slice_duration_us: int = 55,
-                           max_hop: int = 8,
-                           max_wait: int = 2) -> Tuple[List[PathInfo], PathDiversityMetrics]:
-    """分析路径多样性（考虑时间片轮转）
-
-    Args:
-        nb_node: 节点数量
-        nb_link: 每个 ToR 的链路数
-        time_slice_duration_us: 时间片长度
-        max_hop: 最大跳数
-        max_wait: 最大等待时间片数
-    """
+                           time_slice_duration_us: int = 55) -> Tuple[List[PathInfo], PathDiversityMetrics]:
+    """分析路径多样性"""
 
     print(f"Building Opera topology: {nb_node} nodes, {nb_link} links per ToR")
+
     # ==================== 创建网络 ====================
     net = Toolbox.BaseNetwork(
         name="opera_all_to_all_udp",
         backend="ns3",
         nb_node=nb_node,
-        time_slice_duration_us=time_slice_duration_us,      # 时间片长度 10ms
+        time_slice_duration_us=10_000,      # 时间片长度 10ms
         guardband_us=2,                 # 保护带 2us
         ocs_tor_link_bw_gbps=100,
         tor_host_link_bw_gbps=100,
-        use_webserver=False,             # 启用仪表板
+        use_webserver=True,             # 启用仪表板
         simulation_stop_s=1.0,          # 仿真时长 1秒
     )
+
     # 构建拓扑
     slice_to_topo = OpticalTopo.opera(nb_node=nb_node, nb_link=nb_link)
     paths: List[Path] = []
     assert net.deploy_topo(slice_to_topo)
+
     _slice_to_topo = net.get_topo()
     nb_ts = len(_slice_to_topo)
-
-    print(f"Topology created: {nb_ts} time slices")
-    print(f"Finding all time-expanded paths (max_hop={max_hop}, max_wait={max_wait})...")
-    print()
-
-    # 获取所有节点
     any_topo = next(iter(_slice_to_topo.values()))
     nodes = sorted(any_topo.nodes())
 
-    # 对每对节点找出所有可行路径
-    all_paths = []
-    total_pairs = len(nodes) * (len(nodes) - 1)
-    processed = 0
+    print(f"Topology created: {nb_ts} time slices")
+    print(f"Computing HoHo routing...")
 
-    for src in nodes:
-        for dst in nodes:
-            if src == dst:
-                continue
+    # 计算路由（使用 HoHo 获取所有路径）
+    # paths = OpticalRouting.routing_hoho(net.get_topo())
+    # net.deploy_routing(paths, routing_mode="Per-hop")
+    # for dst in nodes:
+    #     for src in nodes:
+    #         if src == dst:
+    #             continue
+    #         paths = paths + OpticalRouting.find_n_hop_path_node_pair(_slice_to_topo, src, dst, 50)
+    
+    # 开启多进程池（默认使用机器的所有 CPU 核心）
+    # 使用 executor.map 并发处理所有的 src 节点
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # 使用 partial 冻结不变的参数
+        worker_func = partial(_worker_find_paths_for_src, 
+                              nodes=nodes, 
+                              slice_to_topo=_slice_to_topo, 
+                              max_hop=20)
+        
+        # 将 nodes 列表里的每个 src 分发给不同的子进程
+        # results 是一个按 nodes 顺序返回的迭代器
+        results = executor.map(worker_func, nodes)
+        
+        # 收集所有子进程的结果
+        for i, local_paths in enumerate(results):
+            paths.extend(local_paths)
+            print(f"  - Completed paths from Source {nodes[i]} (Found {len(local_paths)} paths)")
+            print(local_paths[:5])  # 打印前5条路径作为示例
 
-            processed += 1
-            if processed % 10 == 0:
-                print(f"  Progress: {processed}/{total_pairs} pairs processed...")
-
-            # 找到所有时间片扩展的路径（考虑中间节点 hop-off）
-            paths_for_pair = find_all_time_expanded_paths(
-                slice_to_topo, src, dst, max_hop, max_wait
-            )
-
-            for arrival_ts, node_seq, num_waits in paths_for_pair:
-                all_paths.append((arrival_ts, src, dst, node_seq, num_waits))
-
-    print(f"\nFound {len(all_paths)} paths (across all time slices)")
+    print(f"Found {len(paths)} paths")
     print()
 
     # 提取路径信息
     path_records = []
-    path_by_ts_pair = defaultdict(list)
+    path_by_ts_pair = defaultdict(list)  # {(ts, src, dst): [PathInfo]}
 
-    for path_id, (arrival_ts, src, dst, node_seq, num_waits) in enumerate(all_paths):
+    for path_id, path in enumerate(paths):
         # 提取边
-        edges = extract_edges_from_path(node_seq)
-        num_hops = count_hops_from_path(node_seq)
+        edges = extract_edges_from_path(path)
+        num_hops = count_hops_from_path(path)
+
+        # 如果跳数为 0，尝试用边数量估算
+        if num_hops == 0 and edges:
+            num_hops = len(edges)
 
         path_info = PathInfo(
-            ts=arrival_ts,
-            src=src,
-            dst=dst,
+            ts=path.arrival_ts,
+            src=path.src,
+            dst=path.dst,
             path_id=path_id,
             num_hops=num_hops,
             edges=edges
         )
 
         path_records.append(path_info)
-        path_by_ts_pair[(arrival_ts, src, dst)].append(path_info)
+        path_by_ts_pair[(path.arrival_ts, path.src, path.dst)].append(path_info)
 
     print(f"Extracted {len(path_records)} path records")
     print(f"Unique (ts, src, dst) pairs: {len(path_by_ts_pair)}")
@@ -619,33 +550,25 @@ def main(argv=None):
                        help="Number of links per ToR")
     parser.add_argument("--time-slice", type=int, default=55,
                        help="Time slice duration (us)")
-    parser.add_argument("--max-hop", type=int, default=8,
-                       help="Maximum number of hops")
-    parser.add_argument("--max-wait", type=int, default=2,
-                       help="Maximum number of wait cycles (time slices)")
-    parser.add_argument("--output", type=Path, help="Output directory")
+    parser.add_argument("--output", type=Path, default=Path("results/path_diversity"),
+                       help="Output directory")
     parser.add_argument("--plot", action="store_true",
                        help="Generate plots")
 
     args = parser.parse_args(argv)
 
-    if args.output is None:
-        args.output = Path(f"results/path_diversity_{args.nodes}")
-
     print("="*70)
-    print("Path Diversity Analysis - Experiment 0 (Time-Slice Aware)")
+    print("Path Diversity Analysis - Experiment 0")
     print("="*70)
     print(f"Nodes: {args.nodes}")
     print(f"Links per ToR: {args.nb_link}")
     print(f"Time slice: {args.time_slice} us")
-    print(f"Max hops: {args.max_hop}")
-    print(f"Max wait cycles: {args.max_wait}")
     print(f"Output: {args.output}")
     print()
 
     # 分析路径多样性
     path_records, metrics = analyze_path_diversity(
-        args.nodes, args.nb_link, args.time_slice, args.max_hop, args.max_wait
+        args.nodes, args.nb_link, args.time_slice
     )
 
     # 保存结果

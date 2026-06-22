@@ -16,6 +16,7 @@ import queue
 import copy
 import logging
 import warnings
+import os
 
 from openoptics.TimeFlowTable import Path, Step
 
@@ -247,6 +248,40 @@ def find_n_hop_path_node_pair(slice_to_topo: Dict[int, nx.Graph], src, dst, max_
     #print(f"{optimal_paths=}")
     paths_for_all_arrival_time_slices = extend_paths_to_all_time_slice(optimal_paths, nb_ts)
     #print(f"Paths for all available time slices: {paths_for_all_arrival_time_slices}")
+    
+    # ==================== 新增：在 return 前对结果进行绝对去重 ====================
+    # unique_final_paths = []
+    # seen_signatures = set()
+
+    # for path in paths_for_all_arrival_time_slices:
+    #     # 生成每条路径的唯一内容特征（基于：到达时间 + 所有步骤的节点、时间、端口）
+    #     step_fingerprints = []
+    #     for s in path.steps:
+    #         port = s.send_port if hasattr(s, 'send_port') else 'N/A'
+    #         step_fingerprints.append(f"{s.cur_node}-{s.send_ts}-{port}")
+        
+    #     # 组成该路径的唯一指纹
+    #     path_signature = f"{path.arrival_ts}_" + "_".join(step_fingerprints)
+        
+    #     # 如果这个路径特征没见过，说明是全新的路径，保留下来
+    #     if path_signature not in seen_signatures:
+    #         seen_signatures.add(path_signature)
+    #         unique_final_paths.append(path)
+
+    # # ==================== 3. 将去重后的最终结果写入文件 ====================
+    # # 确保文件夹存在，避免 FileNotFoundError
+    # output_dir = "results/path_diversity_8"
+    # os.makedirs(output_dir, exist_ok=True)
+
+    # with open("results/path_diversity_8/output.txt", "a", encoding="utf-8") as f:
+    #     f.write(f"--------------------------------------------------\n")
+    #     f.write(f"Final UNIQUE Paths for All Time Slices (Count: {len(unique_final_paths)}) src: {src} dst:{dst}:\n")
+    #     f.write(f"--------------------------------------------------\n")
+    #     for ts_idx, path in enumerate(unique_final_paths):
+    #         step_strs = [f"(Node: {s.cur_node}, TS: {s.send_ts}, Port: {getattr(s, 'send_port', 'N/A')})" for s in path.steps]
+    #         f.write(f"Path {ts_idx} [Arrival TS {path.arrival_ts}] -> { ' --> '.join(step_strs) }\n")
+    #     f.write("\n\n")
+    
     return paths_for_all_arrival_time_slices
 
 def remove_suboptimal_paths(paths: List[Path], nb_ts: int):
