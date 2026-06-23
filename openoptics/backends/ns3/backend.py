@@ -1262,6 +1262,7 @@ class Ns3Backend(BackendBase):
         tor_credit_admitted = 0
         tor_credit_dropped = 0
         tor_credit_wasted = 0
+        tor_path = []
         for app in self._tor_apps.values():
             for getter, acc in (
                 ("GetFlareCreditAdmitted", "admitted"),
@@ -1277,6 +1278,13 @@ class Ns3Backend(BackendBase):
                     tor_credit_dropped += value
                 else:
                     tor_credit_wasted += value
+            if hasattr(app, "GetFlareFlowPath"):
+                path_text = str(app.GetFlareFlowPath(flow_id))
+                if path_text:
+                    try:
+                        tor_path = [int(part) for part in path_text.split("->") if part != ""]
+                    except ValueError:
+                        tor_path = []
 
         fct_us = int(dst_app.GetFlowCompletionTimeUs(flow_id))
         fct_s = float(fct_us) / 1e6 if fct_us > 0 else float("nan")
@@ -1307,6 +1315,7 @@ class Ns3Backend(BackendBase):
                 2: int(dst_app.GetPathLengthCount(flow_id, 2)),
                 3: int(dst_app.GetPathLengthCount(flow_id, 3)),
             },
+            tor_path=tor_path,
             flow_monitor=None,
         )
 

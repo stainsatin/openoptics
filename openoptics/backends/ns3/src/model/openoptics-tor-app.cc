@@ -366,6 +366,25 @@ uint64_t TorApp::GetFlareCreditAdmitted() const      { return m_flareCreditAdmit
 uint64_t TorApp::GetFlareCreditDropped() const       { return m_flareCreditDropped; }
 uint64_t TorApp::GetFlareCreditWasted() const        { return m_flareCreditWasted; }
 uint64_t TorApp::GetFlareCreditDataPackets() const   { return m_flareDataPackets; }
+std::string
+TorApp::GetFlareFlowPath(uint32_t flow_id) const
+{
+    auto it = m_flareFlowPaths.find(flow_id);
+    if (it == m_flareFlowPaths.end() || it->second.empty())
+    {
+        return "";
+    }
+    std::ostringstream oss;
+    for (std::size_t i = 0; i < it->second.size(); ++i)
+    {
+        if (i != 0)
+        {
+            oss << "->";
+        }
+        oss << it->second[i];
+    }
+    return oss.str();
+}
 
 void TorApp::SetAdmissionControl(bool enabled)        { m_admissionControl = enabled; }
 bool TorApp::GetAdmissionControl() const              { return m_admissionControl; }
@@ -866,6 +885,16 @@ TorApp::DecrementFlareRemainingHops(Ptr<Packet> pkt)
     pkt->AddHeader(ip);
 }
 
+void
+TorApp::RecordFlareHop(uint32_t flow_id)
+{
+    std::set<uint32_t>& visited = m_flareFlowVisitedTors[flow_id];
+    if (visited.insert(m_torId).second)
+    {
+        m_flareFlowPaths[flow_id].push_back(m_torId);
+    }
+}
+
 bool
 TorApp::AdmitFlareCredit(uint32_t send_ts,
                          uint32_t send_port,
@@ -1199,6 +1228,7 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     if (has_flare && flare.GetType() == FlareHeader::DATA)
     {
         ++m_flareDataPackets;
+        RecordFlareHop(flare.GetFlowId());
     }
     if (is_flare_credit && !AdmitFlareCredit(send_ts, send_port, flare))
     {

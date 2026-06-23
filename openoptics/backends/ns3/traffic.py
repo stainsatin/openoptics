@@ -341,6 +341,7 @@ class FlareStats:
     duplicate_data: int = 0
     duplicate_credits: int = 0
     path_length_histogram: Optional[Mapping[int, int]] = None
+    tor_path: Optional[Sequence[int]] = None
     flow_monitor: Optional[FlowStats] = None
 
 

@@ -75,6 +75,9 @@ class Ns3FlareIntegrationTests(unittest.TestCase):
         self.assertGreater(stats.data_packets_received, 0, stats)
         self.assertGreater(stats.fct_s, 0.0, stats)
         self.assertGreater(stats.throughput_bps, 0.0, stats)
+        self.assertIsNotNone(stats.tor_path, stats)
+        self.assertGreaterEqual(len(stats.tor_path), 1, stats)
+        self.assertEqual(stats.tor_path[0], 0, stats)
 
     def test_flare_incast_makes_progress_without_deadlock(self):
         net, backend = self._direct_net(profile="15us", stop_s=0.03)
