@@ -240,16 +240,16 @@ FlareHostApp::HandleFlarePacket(Ptr<Packet> pkt)
     switch (flare.GetType())
     {
     case FlareHeader::CREDIT:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTotalHops(), flare.GetTimeSlice());
         break;
     case FlareHeader::DATA:
-        HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
+        HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetTotalHops());
         break;
     case FlareHeader::CONTROL:
         HandleControl(flare.GetFlowId(), flare.GetControlCode());
         break;
     case FlareHeader::NACK:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTotalHops(), flare.GetTimeSlice());
         break;
     default:
         break;
@@ -479,6 +479,7 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
         }
     }
     flare.SetRemainingHops(actual_hops);
+    flare.SetTotalHops(actual_hops);
 
     // 设置时间片：DATA 包继承对应 credit 的时间片
     if (packet_type == FlareHeader::DATA)
@@ -512,7 +513,7 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
 }
 
 void
-FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint8_t time_slice)
+FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint32_t total_hops, uint8_t time_slice)
 {
     FlowState* flow = FindSenderFlow(flow_id);
     if (!flow || flow->done)
@@ -524,7 +525,25 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
         ++flow->duplicateCredits;
     }
     ++flow->creditsReceived;
-    ++flow->pathLengthHistogram[remaining_hops];
+
+    // 用 total_hops 记录路径长度直方图（remaining_hops 已被 ToR 递减，不代表路径长度）
+    if (total_hops > 0)
+    {
+        ++flow->pathLengthHistogram[total_hops];
+
+        // 检测路径长度变化并补偿 credit rate
+        if (flow->lastPathLength != 0 && flow->lastPathLength != static_cast<uint8_t>(total_hops))
+        {
+            OnPathChange(*flow, static_cast<uint8_t>(total_hops));
+        }
+        else if (flow->lastPathLength == 0)
+        {
+            flow->lastPathLength = static_cast<uint8_t>(total_hops);
+        }
+    }
+
+    // 调用 credit rate 控制（基于时间片边界和 sent-received 差值推断丢包）
+    AdjustCreditRate(*flow, /*credit_dropped=*/false);
 
     // 记录这个序列号对应的时间片
     flow->creditTimeSliceMap[seq] = time_slice;
@@ -533,7 +552,7 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
 }
 
 void
-FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops)
+FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t total_hops)
 {
     FlowState* flow = FindReceiverFlow(flow_id);
     if (!flow || flow->done)
@@ -550,7 +569,11 @@ FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops
         return;
     }
     ++flow->dataReceived;
-    ++flow->pathLengthHistogram[remaining_hops];
+    // 用 total_hops 记录路径长度直方图
+    if (total_hops > 0)
+    {
+        ++flow->pathLengthHistogram[total_hops];
+    }
     const uint32_t next_credit = seq + flow->initialCreditPkts;
     if (next_credit < flow->totalPackets)
     {
@@ -636,6 +659,17 @@ FlareHostApp::AdjustCreditRate(FlowState& flow, bool credit_dropped)
     Time now = Simulator::Now();
     if (now - flow.lastSliceChange > m_retransmissionTimeout)
     {
+        // 若外部没有标记丢包，用 sent-received 差值推断
+        if (!credit_dropped && flow.creditsSent > flow.creditsReceived)
+        {
+            uint64_t gap = flow.creditsSent - flow.creditsReceived;
+            // 超过 2 个 credit 的差值才认为有丢包（容忍在途包）
+            if (gap > 2)
+            {
+                ++flow.lossCountThisSlice;
+            }
+        }
+
         // 根据 loss 调整 rate
         if (flow.lossCountThisSlice > 0)
         {

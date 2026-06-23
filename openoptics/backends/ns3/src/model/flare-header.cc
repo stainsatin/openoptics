@@ -34,6 +34,7 @@ FlareHeader::FlareHeader()
       m_dstNode(0),
       m_pathId(0),
       m_remainingHops(0),
+      m_totalHops(0),
       m_timeSlice(0)
 {
 }
@@ -56,6 +57,8 @@ void FlareHeader::SetPathId(uint16_t path_id) { m_pathId = path_id; }
 uint16_t FlareHeader::GetPathId() const { return m_pathId; }
 void FlareHeader::SetRemainingHops(uint8_t hops) { m_remainingHops = hops; }
 uint8_t FlareHeader::GetRemainingHops() const { return m_remainingHops; }
+void FlareHeader::SetTotalHops(uint8_t hops) { m_totalHops = hops; }
+uint8_t FlareHeader::GetTotalHops() const { return m_totalHops; }
 void FlareHeader::SetTimeSlice(uint8_t ts) { m_timeSlice = ts; }
 uint8_t FlareHeader::GetTimeSlice() const { return m_timeSlice; }
 bool FlareHeader::IsValid() const { return m_magic == kMagic; }
@@ -63,7 +66,7 @@ bool FlareHeader::IsValid() const { return m_magic == kMagic; }
 uint32_t
 FlareHeader::GetSerializedSize() const
 {
-    return 28;
+    return 29;
 }
 
 void
@@ -79,6 +82,7 @@ FlareHeader::Serialize(Buffer::Iterator start) const
     start.WriteHtonU32(m_dstNode);
     start.WriteHtonU16(m_pathId);
     start.WriteU8(m_remainingHops);
+    start.WriteU8(m_totalHops);
     start.WriteU8(m_timeSlice);
 }
 
@@ -95,6 +99,7 @@ FlareHeader::Deserialize(Buffer::Iterator start)
     m_dstNode = start.ReadNtohU32();
     m_pathId = start.ReadNtohU16();
     m_remainingHops = start.ReadU8();
+    m_totalHops = start.ReadU8();
     m_timeSlice = start.ReadU8();
     return GetSerializedSize();
 }

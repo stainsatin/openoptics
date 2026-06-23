@@ -834,6 +834,38 @@ TorApp::StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice)
     pkt->AddHeader(ip);
 }
 
+void
+TorApp::DecrementFlareRemainingHops(Ptr<Packet> pkt)
+{
+    Ipv4Header ip;
+    if (pkt->GetSize() < ip.GetSerializedSize())
+    {
+        return;
+    }
+    pkt->RemoveHeader(ip);
+
+    FlareHeader flare;
+    if (pkt->GetSize() < flare.GetSerializedSize())
+    {
+        pkt->AddHeader(ip);
+        return;
+    }
+    pkt->RemoveHeader(flare);
+
+    if (!flare.IsValid())
+    {
+        pkt->AddHeader(flare);
+        pkt->AddHeader(ip);
+        return;
+    }
+
+    uint8_t hops = flare.GetRemainingHops();
+    flare.SetRemainingHops(hops > 1 ? hops - 1 : 1);
+
+    pkt->AddHeader(flare);
+    pkt->AddHeader(ip);
+}
+
 bool
 TorApp::AdmitFlareCredit(uint32_t send_ts,
                          uint32_t send_port,
@@ -1161,6 +1193,9 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     const bool has_flare = PeekFlareHeader(pkt_with_headers, &flare);
     const bool is_flare_credit =
         has_flare && flare.GetType() == FlareHeader::CREDIT;
+    const bool is_flare_any_credit =
+        has_flare && (flare.GetType() == FlareHeader::CREDIT ||
+                      flare.GetType() == FlareHeader::TENTATIVE_CREDIT);
     if (has_flare && flare.GetType() == FlareHeader::DATA)
     {
         ++m_flareDataPackets;
@@ -1168,6 +1203,10 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     if (is_flare_credit && !AdmitFlareCredit(send_ts, send_port, flare))
     {
         return;
+    }
+    if (is_flare_any_credit)
+    {
+        DecrementFlareRemainingHops(pkt_with_headers);
     }
 
     const std::size_t pkt_bytes = pkt_with_headers->GetSize();

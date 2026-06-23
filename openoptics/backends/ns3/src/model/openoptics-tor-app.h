@@ -269,6 +269,7 @@ class TorApp : public Application
     bool PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
                          FlareHeader* out) const;
     void StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice);
+    void DecrementFlareRemainingHops(Ptr<Packet> pkt);
     bool AdmitFlareCredit(uint32_t send_ts,
                           uint32_t send_port,
                           const FlareHeader& flare);

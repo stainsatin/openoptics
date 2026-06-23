@@ -56,6 +56,8 @@ class FlareHeader : public Header
     uint16_t GetPathId() const;
     void SetRemainingHops(uint8_t hops);
     uint8_t GetRemainingHops() const;
+    void SetTotalHops(uint8_t hops);
+    uint8_t GetTotalHops() const;
     void SetTimeSlice(uint8_t ts);
     uint8_t GetTimeSlice() const;
     bool IsValid() const;
@@ -78,6 +80,7 @@ class FlareHeader : public Header
     uint32_t m_dstNode;
     uint16_t m_pathId;
     uint8_t m_remainingHops;
+    uint8_t m_totalHops;
     uint8_t m_timeSlice;
 };
 

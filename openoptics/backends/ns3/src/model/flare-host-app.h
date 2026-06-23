@@ -142,8 +142,8 @@ class FlareHostApp : public Application
                          uint8_t packet_type,
                          uint8_t control_code,
                          uint32_t payload_bytes);
-    void HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint8_t time_slice);
-    void HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops);
+    void HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint32_t total_hops, uint8_t time_slice);
+    void HandleData(uint32_t flow_id, uint32_t seq, uint32_t total_hops);
     void HandleControl(uint32_t flow_id, uint8_t control_code);
 
     void AdjustCreditRate(FlowState& flow, bool credit_dropped);
