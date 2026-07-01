@@ -26,7 +26,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -152,7 +151,6 @@ class TorApp : public Application
     uint64_t GetFlareCreditDropped() const;
     uint64_t GetFlareCreditWasted() const;
     uint64_t GetFlareCreditDataPackets() const;
-    std::string GetFlareFlowPath(uint32_t flow_id) const;
 
     void SetFlareCreditQueueSizePkts(uint32_t pkts);
     void SetFlareShapingThresholdPkts(uint32_t pkts);
@@ -253,6 +251,7 @@ class TorApp : public Application
     // AddUplinkDevice in any order.
     void ResizeCqBytesPerSlot();
     void ResizeFlareCreditState();
+    void ResetFlareCreditAdmissions(uint32_t slice);
 
     // Rebuild m_cq with one calendar queue per uplink, each sized to
     // m_numSlices. No-op once StartApplication has run (would discard live
@@ -271,8 +270,7 @@ class TorApp : public Application
     bool PeekFlareHeader(Ptr<const Packet> pkt_with_headers,
                          FlareHeader* out) const;
     void StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice);
-    void DecrementFlareRemainingHops(Ptr<Packet> pkt);
-    void RecordFlareHop(uint32_t flow_id);
+    void DecrementFlareRemainingHops(Ptr<Packet> pkt_with_headers);
     bool AdmitFlareCredit(uint32_t send_ts,
                           uint32_t send_port,
                           const FlareHeader& flare);
@@ -396,8 +394,6 @@ class TorApp : public Application
     uint64_t m_flareCreditDropped = 0;
     uint64_t m_flareCreditWasted = 0;
     uint64_t m_flareDataPackets = 0;
-    std::unordered_map<uint32_t, std::vector<uint32_t>> m_flareFlowPaths;
-    std::unordered_map<uint32_t, std::set<uint32_t>> m_flareFlowVisitedTors;
     uint64_t m_cqBufferedBytes;
     uint64_t m_cqPeakBufferedBytes;
 

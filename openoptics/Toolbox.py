@@ -721,4 +721,9 @@ class BaseNetwork:
 
         for src, entries in entry_dict.items():
             self.add_time_flow_entry(src, entries, routing_mode=routing_mode)
+        install_route_hop_counts = getattr(
+            self._backend, "install_route_hop_counts", None
+        )
+        if install_route_hop_counts is not None:
+            install_route_hop_counts(paths)
         return True

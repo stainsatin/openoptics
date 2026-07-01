@@ -12,6 +12,7 @@
 #include "ns3/double.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace ns3
 {
@@ -20,6 +21,10 @@ namespace openoptics
 
 NS_LOG_COMPONENT_DEFINE("OpenOpticsFlareHost");
 NS_OBJECT_ENSURE_REGISTERED(FlareHostApp);
+
+namespace {
+double ClampCreditRate(double rate);
+} // namespace
 
 TypeId
 FlareHostApp::GetTypeId()
@@ -72,8 +77,8 @@ FlareHostApp::SetDefaultConfig(uint32_t credit_qsize_pkts,
     m_creditQsizePkts = credit_qsize_pkts;
     m_shapingThreshPkts = shaping_thresh_pkts;
     m_aeolusThreshPkts = aeolus_thresh_pkts;
-    m_wInit = w_init;
-    m_targetLoss = target_loss;
+    m_wInit = ClampCreditRate(w_init);
+    m_targetLoss = std::min(1.0, std::max(0.0, target_loss));
     m_mtuBytes = mtu_bytes;
     m_retransmissionTimeout = Seconds(retransmission_timeout_s);
 }
@@ -83,6 +88,22 @@ uint32_t
 CeilDiv(uint32_t a, uint32_t b)
 {
     return (a + b - 1) / b;
+}
+
+double
+ClampCreditRate(double rate)
+{
+    return std::min(1.0, std::max(0.1, rate));
+}
+
+double
+AdmissionProbabilityForHops(uint8_t hops)
+{
+    if (hops <= 1)
+    {
+        return 1.0;
+    }
+    return std::pow(0.5, static_cast<double>(hops) - 1.0);
 }
 } // namespace
 
@@ -112,6 +133,8 @@ FlareHostApp::AddSenderFlow(uint32_t flow_id,
     f.pathId = path_id;
     f.initialCreditPkts = std::max(1u, initial_credit_pkts);
     f.totalPackets = CeilDiv(size_bytes, f.packetSizeBytes);
+    f.targetCreditRate = ClampCreditRate(m_wInit);
+    f.lastSliceChange = f.start;
     m_senderFlows[flow_id] = f;
     Simulator::Schedule(f.start, &FlareHostApp::SendEligibleData, this, flow_id);
 }
@@ -127,7 +150,8 @@ FlareHostApp::AddReceiverFlow(uint32_t flow_id,
                               uint32_t packet_size_bytes,
                               uint32_t port,
                               uint32_t path_id,
-                              uint32_t initial_credit_pkts)
+                              uint32_t initial_credit_pkts,
+                              uint32_t credit_path_hops)
 {
     FlowState f;
     f.flowId = flow_id;
@@ -141,7 +165,10 @@ FlareHostApp::AddReceiverFlow(uint32_t flow_id,
     f.port = port;
     f.pathId = path_id;
     f.initialCreditPkts = std::max(1u, initial_credit_pkts);
+    f.creditPathHops = std::max(1u, credit_path_hops);
     f.totalPackets = CeilDiv(size_bytes, f.packetSizeBytes);
+    f.targetCreditRate = ClampCreditRate(m_wInit);
+    f.lastSliceChange = f.start;
     m_receiverFlows[flow_id] = f;
     Simulator::Schedule(f.start, &FlareHostApp::SendInitialCredits, this, flow_id);
 }
@@ -240,16 +267,16 @@ FlareHostApp::HandleFlarePacket(Ptr<Packet> pkt)
     switch (flare.GetType())
     {
     case FlareHeader::CREDIT:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTotalHops(), flare.GetTimeSlice());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
         break;
     case FlareHeader::DATA:
-        HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetTotalHops());
+        HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
         break;
     case FlareHeader::CONTROL:
         HandleControl(flare.GetFlowId(), flare.GetControlCode());
         break;
     case FlareHeader::NACK:
-        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTotalHops(), flare.GetTimeSlice());
+        HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
         break;
     default:
         break;
@@ -293,6 +320,25 @@ FlareHostApp::RefreshCredits(uint32_t flow_id)
     const uint32_t delivered = static_cast<uint32_t>(flow->receivedSeqs.size());
     const uint32_t window_end =
         std::min(flow->totalPackets, delivered + flow->initialCreditPkts);
+
+    bool credit_loss = false;
+    const Time now = Simulator::Now();
+    for (uint32_t seq = 0; seq < window_end; ++seq)
+    {
+        if (flow->receivedSeqs.find(seq) != flow->receivedSeqs.end())
+        {
+            continue;
+        }
+        auto sent_it = flow->creditSentAt.find(seq);
+        if (sent_it != flow->creditSentAt.end() &&
+            now - sent_it->second >= m_retransmissionTimeout)
+        {
+            credit_loss = true;
+            break;
+        }
+    }
+    AdjustCreditRate(*flow, credit_loss);
+
     for (uint32_t seq = 0; seq < window_end; ++seq)
     {
         if (flow->receivedSeqs.find(seq) == flow->receivedSeqs.end())
@@ -376,6 +422,7 @@ FlareHostApp::SendCredit(FlowState& flow, uint32_t seq)
 
     ++flow.creditsSent;
     SendFlarePacket(flow, seq, pkt_type, FlareHeader::NONE, 0);
+    flow.creditSentAt[seq] = Simulator::Now();
 }
 
 void
@@ -433,12 +480,15 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
     flare.SetDstNode(flow.peerNode);
     flare.SetPathId(static_cast<uint16_t>(flow.pathId));
 
-    // Hop Jittering：仅对 CREDIT 包应用
-    uint8_t actual_hops = 1;  // 默认值
+    uint8_t actual_hops = static_cast<uint8_t>(std::min(flow.creditPathHops, 255u));
     if (packet_type == FlareHeader::CREDIT ||
         packet_type == FlareHeader::TENTATIVE_CREDIT)
     {
-        // 估算 BDP：初始窗口 × 包大小作为启发式
+        // Credit admission depends on the reverse-path distance configured
+        // when the receiver flow was installed.  Do not infer it from the
+        // data-path histogram: data packets reach the receiver with their
+        // remaining_hops already decremented, which would collapse long
+        // credit paths into apparent one-hop credits.
         uint64_t bdp_estimate = static_cast<uint64_t>(flow.initialCreditPkts) *
                                 static_cast<uint64_t>(flow.packetSizeBytes);
         uint64_t delivered_bytes = flow.receivedSeqs.size() * flow.packetSizeBytes;
@@ -446,16 +496,6 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
             ? static_cast<double>(delivered_bytes) / static_cast<double>(bdp_estimate)
             : 0.0;
 
-        // 从 pathLengthHistogram 获取最常见的 hop count
-        uint32_t max_count = 0;
-        for (const auto& kv : flow.pathLengthHistogram)
-        {
-            if (kv.second > max_count)
-            {
-                max_count = kv.second;
-                actual_hops = static_cast<uint8_t>(kv.first);
-            }
-        }
         if (actual_hops == 0) actual_hops = 1;  // 保底
 
         // 50% 概率应用 jittering
@@ -513,7 +553,7 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
 }
 
 void
-FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint32_t total_hops, uint8_t time_slice)
+FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint8_t time_slice)
 {
     FlowState* flow = FindSenderFlow(flow_id);
     if (!flow || flow->done)
@@ -525,25 +565,7 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
         ++flow->duplicateCredits;
     }
     ++flow->creditsReceived;
-
-    // 用 total_hops 记录路径长度直方图（remaining_hops 已被 ToR 递减，不代表路径长度）
-    if (total_hops > 0)
-    {
-        ++flow->pathLengthHistogram[total_hops];
-
-        // 检测路径长度变化并补偿 credit rate
-        if (flow->lastPathLength != 0 && flow->lastPathLength != static_cast<uint8_t>(total_hops))
-        {
-            OnPathChange(*flow, static_cast<uint8_t>(total_hops));
-        }
-        else if (flow->lastPathLength == 0)
-        {
-            flow->lastPathLength = static_cast<uint8_t>(total_hops);
-        }
-    }
-
-    // 调用 credit rate 控制（基于时间片边界和 sent-received 差值推断丢包）
-    AdjustCreditRate(*flow, /*credit_dropped=*/false);
+    ++flow->pathLengthHistogram[remaining_hops];
 
     // 记录这个序列号对应的时间片
     flow->creditTimeSliceMap[seq] = time_slice;
@@ -552,7 +574,7 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
 }
 
 void
-FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t total_hops)
+FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops)
 {
     FlowState* flow = FindReceiverFlow(flow_id);
     if (!flow || flow->done)
@@ -569,11 +591,10 @@ FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t total_hops)
         return;
     }
     ++flow->dataReceived;
-    // 用 total_hops 记录路径长度直方图
-    if (total_hops > 0)
-    {
-        ++flow->pathLengthHistogram[total_hops];
-    }
+    ++flow->pathLengthHistogram[remaining_hops];
+    OnPathChange(*flow, static_cast<uint8_t>(remaining_hops));
+    flow->creditSentAt.erase(seq);
+    AdjustCreditRate(*flow, false);
     const uint32_t next_credit = seq + flow->initialCreditPkts;
     if (next_credit < flow->totalPackets)
     {
@@ -657,27 +678,17 @@ FlareHostApp::AdjustCreditRate(FlowState& flow, bool credit_dropped)
 
     // 检测时间片边界（简化：每个 retransmission timeout 周期）
     Time now = Simulator::Now();
-    if (now - flow.lastSliceChange > m_retransmissionTimeout)
+    if (now - flow.lastSliceChange >= m_retransmissionTimeout)
     {
-        // 若外部没有标记丢包，用 sent-received 差值推断
-        if (!credit_dropped && flow.creditsSent > flow.creditsReceived)
-        {
-            uint64_t gap = flow.creditsSent - flow.creditsReceived;
-            // 超过 2 个 credit 的差值才认为有丢包（容忍在途包）
-            if (gap > 2)
-            {
-                ++flow.lossCountThisSlice;
-            }
-        }
-
         // 根据 loss 调整 rate
         if (flow.lossCountThisSlice > 0)
         {
-            flow.targetCreditRate *= (1.0 - m_targetLoss);  // 减速
+            flow.targetCreditRate = ClampCreditRate(
+                flow.targetCreditRate * (1.0 - m_targetLoss));  // 减速
         }
         else
         {
-            flow.targetCreditRate = std::min(1.0,
+            flow.targetCreditRate = ClampCreditRate(
                 flow.targetCreditRate * (1.0 + m_targetLoss));  // 加速
         }
 
@@ -690,13 +701,22 @@ FlareHostApp::AdjustCreditRate(FlowState& flow, bool credit_dropped)
 void
 FlareHostApp::OnPathChange(FlowState& flow, uint8_t new_path_length)
 {
+    if (new_path_length == 0)
+    {
+        return;
+    }
+    if (flow.lastPathLength == 0)
+    {
+        flow.lastPathLength = new_path_length;
+        return;
+    }
+
     // 路径变化时的 rate 补偿
-    double old_prob = std::pow(0.5, static_cast<double>(flow.lastPathLength) - 1.0);
-    double new_prob = std::pow(0.5, static_cast<double>(new_path_length) - 1.0);
+    double old_prob = AdmissionProbabilityForHops(flow.lastPathLength);
+    double new_prob = AdmissionProbabilityForHops(new_path_length);
     double delta = new_prob - old_prob;
 
-    flow.targetCreditRate = std::min(1.0,
-        std::max(0.1, flow.targetCreditRate + delta));
+    flow.targetCreditRate = ClampCreditRate(flow.targetCreditRate + delta);
 
     flow.lastPathLength = new_path_length;
 }

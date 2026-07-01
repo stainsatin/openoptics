@@ -24,7 +24,7 @@ def path2entries(
 
     Args:
         paths: A list of paths
-        routing_mode: Per-hop or Source. Trim path if Per-hop.
+        routing_mode: Per-hop or Source. Use only the first hop if Per-hop.
         arch_mode: TA or TO.
             In TA, packets for each dst has a dedicated queue. send_ts in TimeFlowHop is dst.
             In TO, send_ts is actual sending time slice.
@@ -39,9 +39,8 @@ def path2entries(
     entries = {}
     for path in paths:
         hops = []
-        if routing_mode == "Per-hop":
-            path.steps = [path.steps[0]]
-        for step in path.steps:
+        steps = path.steps[:1] if routing_mode == "Per-hop" else path.steps
+        for step in steps:
             if step.step_type == "port":
                 hops.append(
                     TimeFlowHop(

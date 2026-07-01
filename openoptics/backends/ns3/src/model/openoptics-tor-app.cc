@@ -19,6 +19,7 @@
 #include "ns3/double.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace ns3
@@ -142,6 +143,13 @@ HopBelongsHere(uint32_t cur_node, uint32_t tor_id)
 {
     return cur_node == 255u || cur_node == tor_id;
 }
+
+inline bool
+IsFlareCreditType(FlareHeader::PacketType type)
+{
+    return type == FlareHeader::CREDIT ||
+           type == FlareHeader::TENTATIVE_CREDIT;
+}
 } // namespace
 
 void
@@ -166,6 +174,18 @@ TorApp::ResizeFlareCreditState()
     const std::size_t slots = m_numSlices > 0 ? m_numSlices : 1;
     const std::size_t uplinks = m_uplinks.size();
     m_flareCreditPktsPerSlot.assign(slots, std::vector<uint32_t>(uplinks, 0));
+}
+
+void
+TorApp::ResetFlareCreditAdmissions(uint32_t slice)
+{
+    if (slice >= m_flareCreditPktsPerSlot.size())
+    {
+        return;
+    }
+    std::fill(m_flareCreditPktsPerSlot[slice].begin(),
+              m_flareCreditPktsPerSlot[slice].end(),
+              0);
 }
 
 void
@@ -366,25 +386,6 @@ uint64_t TorApp::GetFlareCreditAdmitted() const      { return m_flareCreditAdmit
 uint64_t TorApp::GetFlareCreditDropped() const       { return m_flareCreditDropped; }
 uint64_t TorApp::GetFlareCreditWasted() const        { return m_flareCreditWasted; }
 uint64_t TorApp::GetFlareCreditDataPackets() const   { return m_flareDataPackets; }
-std::string
-TorApp::GetFlareFlowPath(uint32_t flow_id) const
-{
-    auto it = m_flareFlowPaths.find(flow_id);
-    if (it == m_flareFlowPaths.end() || it->second.empty())
-    {
-        return "";
-    }
-    std::ostringstream oss;
-    for (std::size_t i = 0; i < it->second.size(); ++i)
-    {
-        if (i != 0)
-        {
-            oss << "->";
-        }
-        oss << it->second[i];
-    }
-    return oss.str();
-}
 
 void TorApp::SetAdmissionControl(bool enabled)        { m_admissionControl = enabled; }
 bool TorApp::GetAdmissionControl() const              { return m_admissionControl; }
@@ -487,8 +488,11 @@ void
 TorApp::OnSliceBoundary()
 {
     // m_linkFreeAt is an absolute simulator timestamp, so cycle wrap
-    // can't leave stale state — no reset needed.
-    DrainSlice(CurrentSlice());
+    // can't leave stale state.  Flare credit admissions are per-slice
+    // tokens, so they reset when a new active window begins.
+    const uint32_t slice = CurrentSlice();
+    DrainSlice(slice);
+    ResetFlareCreditAdmissions(slice);
     ScheduleNextSliceBoundary();
 }
 
@@ -509,7 +513,7 @@ TorApp::DrainSlice(uint32_t slice)
             FlareHeader flare;
             const bool has_flare = PeekFlareHeader(pkt, &flare);
             const bool is_flare_credit =
-                has_flare && flare.GetType() == FlareHeader::CREDIT;
+                has_flare && IsFlareCreditType(flare.GetType());
             const bool is_flare_data =
                 has_flare && flare.GetType() == FlareHeader::DATA;
 
@@ -553,7 +557,7 @@ TorApp::DrainSlice(uint32_t slice)
                         ++m_flareCreditWasted;
                     }
                     ++m_drops;
-                    ++m_sliceOverflowDrops;
+                        ++m_sliceOverflowDrops;
                     continue;
                 }
                 // Late-in-slice + link idle: too close to the active-
@@ -567,10 +571,6 @@ TorApp::DrainSlice(uint32_t slice)
             // the updated state.
             m_cq[uplink].Dequeue(slice, &pkt, &cookie);
             RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
-            if (is_flare_credit)
-            {
-                ReleaseFlareCredit(slice, uplink, flare);
-            }
             const uint64_t serialize_ns =
                 (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL
                  + m_uplinkLinkRateBps - 1ULL)
@@ -580,6 +580,10 @@ TorApp::DrainSlice(uint32_t slice)
                 std::max(now, m_linkFreeAt[uplink])
                 + NanoSeconds(serialize_ns);
             Ptr<NetDevice> dev = m_uplinks[uplink];
+            if (has_flare)
+            {
+                DecrementFlareRemainingHops(pkt);
+            }
             if (!dev->Send(pkt, dev->GetBroadcast(), /*protocol=*/0x0800))
             {
                 ++m_drops;
@@ -854,45 +858,65 @@ TorApp::StampFlareTimeSlice(Ptr<Packet> pkt, uint8_t time_slice)
 }
 
 void
-TorApp::DecrementFlareRemainingHops(Ptr<Packet> pkt)
+TorApp::DecrementFlareRemainingHops(Ptr<Packet> pkt_with_headers)
 {
-    Ipv4Header ip;
-    if (pkt->GetSize() < ip.GetSerializedSize())
+    OpenOpticsHeader oo;
+    if (pkt_with_headers->GetSize() < oo.GetSerializedSize())
     {
         return;
     }
-    pkt->RemoveHeader(ip);
+    pkt_with_headers->RemoveHeader(oo);
+
+    bool has_sr = false;
+    OpenOpticsSourceRouteHeader sr;
+    if (oo.GetMode() == OpenOpticsHeader::kSourceRouted)
+    {
+        if (pkt_with_headers->GetSize() < 2)
+        {
+            pkt_with_headers->AddHeader(oo);
+            return;
+        }
+        pkt_with_headers->RemoveHeader(sr);
+        has_sr = true;
+    }
+
+    Ipv4Header ip;
+    if (pkt_with_headers->GetSize() < ip.GetSerializedSize())
+    {
+        if (has_sr)
+        {
+            pkt_with_headers->AddHeader(sr);
+        }
+        pkt_with_headers->AddHeader(oo);
+        return;
+    }
+    pkt_with_headers->RemoveHeader(ip);
 
     FlareHeader flare;
-    if (pkt->GetSize() < flare.GetSerializedSize())
+    if (pkt_with_headers->GetSize() < flare.GetSerializedSize())
     {
-        pkt->AddHeader(ip);
+        pkt_with_headers->AddHeader(ip);
+        if (has_sr)
+        {
+            pkt_with_headers->AddHeader(sr);
+        }
+        pkt_with_headers->AddHeader(oo);
         return;
     }
-    pkt->RemoveHeader(flare);
+    pkt_with_headers->RemoveHeader(flare);
 
-    if (!flare.IsValid())
+    if (flare.IsValid() && flare.GetRemainingHops() > 0)
     {
-        pkt->AddHeader(flare);
-        pkt->AddHeader(ip);
-        return;
+        flare.SetRemainingHops(flare.GetRemainingHops() - 1);
     }
 
-    uint8_t hops = flare.GetRemainingHops();
-    flare.SetRemainingHops(hops > 1 ? hops - 1 : 1);
-
-    pkt->AddHeader(flare);
-    pkt->AddHeader(ip);
-}
-
-void
-TorApp::RecordFlareHop(uint32_t flow_id)
-{
-    std::set<uint32_t>& visited = m_flareFlowVisitedTors[flow_id];
-    if (visited.insert(m_torId).second)
+    pkt_with_headers->AddHeader(flare);
+    pkt_with_headers->AddHeader(ip);
+    if (has_sr)
     {
-        m_flareFlowPaths[flow_id].push_back(m_torId);
+        pkt_with_headers->AddHeader(sr);
     }
+    pkt_with_headers->AddHeader(oo);
 }
 
 bool
@@ -1221,22 +1245,14 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     FlareHeader flare;
     const bool has_flare = PeekFlareHeader(pkt_with_headers, &flare);
     const bool is_flare_credit =
-        has_flare && flare.GetType() == FlareHeader::CREDIT;
-    const bool is_flare_any_credit =
-        has_flare && (flare.GetType() == FlareHeader::CREDIT ||
-                      flare.GetType() == FlareHeader::TENTATIVE_CREDIT);
+        has_flare && IsFlareCreditType(flare.GetType());
     if (has_flare && flare.GetType() == FlareHeader::DATA)
     {
         ++m_flareDataPackets;
-        RecordFlareHop(flare.GetFlowId());
     }
     if (is_flare_credit && !AdmitFlareCredit(send_ts, send_port, flare))
     {
         return;
-    }
-    if (is_flare_any_credit)
-    {
-        DecrementFlareRemainingHops(pkt_with_headers);
     }
 
     const std::size_t pkt_bytes = pkt_with_headers->GetSize();

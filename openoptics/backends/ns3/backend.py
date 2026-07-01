@@ -226,6 +226,7 @@ class Ns3Backend(BackendBase):
         self._traffic_apps: list = []
         self._next_traffic_port: int = 9000
         self._next_flare_flow_id: int = 1
+        self._route_hop_counts: Dict[Tuple[int, int, int], int] = {}
 
     # ------------------------------------------------------------------
     # BackendBase interface
@@ -797,6 +798,26 @@ class Ns3Backend(BackendBase):
             config = self._flare_config
         return FlareTrafficGenerator(self, config=config, **defaults)
 
+    def install_route_hop_counts(self, paths) -> None:
+        """Cache route lengths for Flare credit hop annotations.
+
+        Flare credits travel receiver -> sender, so ``install_flare_flow`` looks
+        up the reverse pair ``(dst, src, start_slice)`` when programming the
+        receiver host app.
+        """
+        self._route_hop_counts = {
+            (int(path.src), int(path.dst), int(path.arrival_ts)): len(path.steps)
+            for path in paths
+        }
+        for path in paths:
+            app = self._tor_apps.get(int(path.src))
+            if app is not None and hasattr(app, "AddFlareRouteHopCount"):
+                app.AddFlareRouteHopCount(
+                    int(path.dst),
+                    int(path.arrival_ts),
+                    int(len(path.steps)),
+                )
+
     def _allocate_traffic_port(self) -> int:
         port = self._next_traffic_port
         self._next_traffic_port += 1
@@ -999,6 +1020,14 @@ class Ns3Backend(BackendBase):
         dst_app = self._flare_apps[dst]
         src_ip = self._host_iface_addrs[src]
         dst_ip = self._host_iface_addrs[dst]
+        start_slice = (
+            int(float(start_s) * 1_000_000) // self._slice_duration_us
+            if self._slice_duration_us > 0 else 0
+        ) % max(self._nb_time_slices, 1)
+        credit_path_hops = self._route_hop_counts.get(
+            (int(dst), int(src), int(start_slice)),
+            1,
+        )
 
         src_app.AddSenderFlow(
             int(flow_id),
@@ -1025,6 +1054,7 @@ class Ns3Backend(BackendBase):
             int(port),
             int(path_id),
             int(cfg.initial_window_pkts),
+            int(credit_path_hops),
         )
         self._traffic_apps.extend([src_app, dst_app])
         return src_app, dst_app
@@ -1262,7 +1292,6 @@ class Ns3Backend(BackendBase):
         tor_credit_admitted = 0
         tor_credit_dropped = 0
         tor_credit_wasted = 0
-        tor_path = []
         for app in self._tor_apps.values():
             for getter, acc in (
                 ("GetFlareCreditAdmitted", "admitted"),
@@ -1278,13 +1307,6 @@ class Ns3Backend(BackendBase):
                     tor_credit_dropped += value
                 else:
                     tor_credit_wasted += value
-            if hasattr(app, "GetFlareFlowPath"):
-                path_text = str(app.GetFlareFlowPath(flow_id))
-                if path_text:
-                    try:
-                        tor_path = [int(part) for part in path_text.split("->") if part != ""]
-                    except ValueError:
-                        tor_path = []
 
         fct_us = int(dst_app.GetFlowCompletionTimeUs(flow_id))
         fct_s = float(fct_us) / 1e6 if fct_us > 0 else float("nan")
@@ -1311,11 +1333,11 @@ class Ns3Backend(BackendBase):
             duplicate_data=int(dst_app.GetDuplicateData(flow_id)),
             duplicate_credits=int(src_app.GetDuplicateCredits(flow_id)),
             path_length_histogram={
+                0: int(dst_app.GetPathLengthCount(flow_id, 0)),
                 1: int(dst_app.GetPathLengthCount(flow_id, 1)),
                 2: int(dst_app.GetPathLengthCount(flow_id, 2)),
                 3: int(dst_app.GetPathLengthCount(flow_id, 3)),
             },
-            tor_path=tor_path,
             flow_monitor=None,
         )
 

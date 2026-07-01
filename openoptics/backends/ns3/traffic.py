@@ -248,6 +248,14 @@ class FlareConfig:
                 None if self.initial_credit_pkts is None
                 else int(self.initial_credit_pkts)
             ),
+            congestion_threshold_percent=(
+                50 if self.congestion_threshold_percent is None
+                else int(self.congestion_threshold_percent)
+            ),
+            tentative_threshold_percent=(
+                25 if self.tentative_threshold_percent is None
+                else int(self.tentative_threshold_percent)
+            ),
         )
         if cfg.credit_qsize_pkts <= 0:
             raise ValueError("flare credit_qsize_pkts must be positive")
@@ -265,6 +273,10 @@ class FlareConfig:
             raise ValueError("flare target_loss must be in [0, 1]")
         if cfg.initial_credit_pkts is not None and cfg.initial_credit_pkts <= 0:
             raise ValueError("flare initial_credit_pkts must be positive")
+        if not (0 <= cfg.congestion_threshold_percent <= 100):
+            raise ValueError("flare congestion_threshold_percent must be in [0, 100]")
+        if not (0 <= cfg.tentative_threshold_percent <= 100):
+            raise ValueError("flare tentative_threshold_percent must be in [0, 100]")
         return cfg
 
     @property
@@ -285,6 +297,8 @@ class FlareConfig:
             "mtu_bytes": int(cfg.mtu_bytes),
             "retransmission_timeout_s": float(cfg.retransmission_timeout_s),
             "initial_credit_pkts": int(cfg.initial_window_pkts),
+            "congestion_threshold_percent": int(cfg.congestion_threshold_percent),
+            "tentative_threshold_percent": int(cfg.tentative_threshold_percent),
         }
 
 
@@ -341,7 +355,7 @@ class FlareStats:
     duplicate_data: int = 0
     duplicate_credits: int = 0
     path_length_histogram: Optional[Mapping[int, int]] = None
-    tor_path: Optional[Sequence[int]] = None
+    target_credit_rate: float = 1.0
     flow_monitor: Optional[FlowStats] = None
 
 
