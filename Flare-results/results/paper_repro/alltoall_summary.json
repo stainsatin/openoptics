@@ -1,0 +1,17 @@
+{
+  "experiment": "alltoall",
+  "config": {
+    "nodes": 8,
+    "flow_size": 65536
+  },
+  "metrics": {
+    "completed_flows": 5,
+    "total_flows": 56,
+    "mean_fct_ms": 14.9504,
+    "median_fct_ms": 15.638,
+    "p50_fct_ms": 15.638,
+    "p99_fct_ms": 16.722,
+    "cv_fct": 0.10919830642429083
+  },
+  "timestamp": "2026-06-16 21:21:18"
+}

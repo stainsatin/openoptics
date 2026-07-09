@@ -1,0 +1,45 @@
+{
+  "by_group": {
+    "long-r0-far": {
+      "credit_hops": 3,
+      "expected_bottleneck_admitted": 8,
+      "expected_bottleneck_dropped": 120,
+      "expected_credit_burst": 128,
+      "expected_credit_hop_cost_dropped": 360,
+      "expected_credit_hop_cost_sent": 384,
+      "hop_class": "long"
+    },
+    "long-r1-far": {
+      "credit_hops": 2,
+      "expected_bottleneck_admitted": 0,
+      "expected_bottleneck_dropped": 128,
+      "expected_credit_burst": 128,
+      "expected_credit_hop_cost_dropped": 256,
+      "expected_credit_hop_cost_sent": 256,
+      "hop_class": "long"
+    },
+    "short-r1-near": {
+      "credit_hops": 1,
+      "expected_bottleneck_admitted": 0,
+      "expected_bottleneck_dropped": 128,
+      "expected_credit_burst": 128,
+      "expected_credit_hop_cost_dropped": 128,
+      "expected_credit_hop_cost_sent": 128,
+      "hop_class": "short"
+    }
+  },
+  "parameters": {
+    "bottleneck_qsize": 8,
+    "flows_per_pair": 16,
+    "gap_us": 5.0,
+    "initial_credit": 8,
+    "model": "first-credit-burst at tor1->tor2",
+    "note": "This model intentionally ignores queue drain and refreshes; it is the expected first-burst ordering pressure.",
+    "order": "long-first"
+  },
+  "total": {
+    "expected_bottleneck_admitted": 8,
+    "expected_bottleneck_dropped": 376,
+    "expected_credit_burst": 384
+  }
+}

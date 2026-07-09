@@ -44,7 +44,9 @@ FlareHostApp::FlareHostApp()
       m_wInit(1.0),
       m_targetLoss(0.1),
       m_mtuBytes(1024),
-      m_retransmissionTimeout(MicroSeconds(200))
+      m_retransmissionTimeout(MicroSeconds(200)),
+      m_hostLinkRateBps(0),
+      m_nextCreditSendTime(Seconds(0))
 {
 }
 
@@ -81,6 +83,12 @@ FlareHostApp::SetDefaultConfig(uint32_t credit_qsize_pkts,
     m_targetLoss = std::min(1.0, std::max(0.0, target_loss));
     m_mtuBytes = mtu_bytes;
     m_retransmissionTimeout = Seconds(retransmission_timeout_s);
+}
+
+void
+FlareHostApp::SetHostLinkRateBps(uint64_t bps)
+{
+    m_hostLinkRateBps = bps;
 }
 
 namespace {
@@ -209,6 +217,10 @@ FlareHostApp::StopApplication()
             Simulator::Cancel(kv.second.creditRefreshEvent);
         }
     }
+    if (m_creditPacingEvent.IsPending())
+    {
+        Simulator::Cancel(m_creditPacingEvent);
+    }
 }
 
 void
@@ -294,7 +306,7 @@ FlareHostApp::SendInitialCredits(uint32_t flow_id)
     const uint32_t limit = std::min(flow->initialCreditPkts, flow->totalPackets);
     while (flow->nextCreditSeq < limit)
     {
-        SendCredit(*flow, flow->nextCreditSeq++);
+        EnqueueCredit(*flow, flow->nextCreditSeq++);
     }
     if (!flow->creditRefreshEvent.IsPending())
     {
@@ -343,13 +355,75 @@ FlareHostApp::RefreshCredits(uint32_t flow_id)
     {
         if (flow->receivedSeqs.find(seq) == flow->receivedSeqs.end())
         {
-            SendCredit(*flow, seq);
+            EnqueueCredit(*flow, seq);
         }
     }
 
     flow->creditRefreshEvent =
         Simulator::Schedule(m_retransmissionTimeout,
                             &FlareHostApp::RefreshCredits, this, flow_id);
+}
+
+void
+FlareHostApp::EnqueueCredit(FlowState& flow, uint32_t seq)
+{
+    if (flow.done || Simulator::Now() > flow.stop ||
+        seq >= flow.totalPackets ||
+        flow.receivedSeqs.find(seq) != flow.receivedSeqs.end())
+    {
+        return;
+    }
+
+    const uint64_t key = CreditKey(flow.flowId, seq);
+    if (!m_pendingCreditKeys.insert(key).second)
+    {
+        return;
+    }
+    m_pendingCredits.emplace_back(flow.flowId, seq);
+    ScheduleCreditPacer();
+}
+
+void
+FlareHostApp::ScheduleCreditPacer()
+{
+    if (m_pendingCredits.empty() || m_creditPacingEvent.IsPending())
+    {
+        return;
+    }
+    const Time now = Simulator::Now();
+    const Time delay =
+        (m_nextCreditSendTime > now) ? (m_nextCreditSendTime - now) : Time(0);
+    m_creditPacingEvent =
+        Simulator::Schedule(delay, &FlareHostApp::RunCreditPacer, this);
+}
+
+void
+FlareHostApp::RunCreditPacer()
+{
+    m_creditPacingEvent = EventId();
+    if (m_pendingCredits.empty())
+    {
+        return;
+    }
+
+    const auto item = m_pendingCredits.front();
+    m_pendingCredits.pop_front();
+    m_pendingCreditKeys.erase(CreditKey(item.first, item.second));
+
+    FlowState* flow = FindReceiverFlow(item.first);
+    if (flow && !flow->done && Simulator::Now() <= flow->stop &&
+        item.second < flow->totalPackets &&
+        flow->receivedSeqs.find(item.second) == flow->receivedSeqs.end())
+    {
+        SendCredit(*flow, item.second);
+        m_nextCreditSendTime = Simulator::Now() + CreditPaceInterval(*flow);
+    }
+    else
+    {
+        m_nextCreditSendTime = Simulator::Now();
+    }
+
+    ScheduleCreditPacer();
 }
 
 void
@@ -598,7 +672,7 @@ FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops
     const uint32_t next_credit = seq + flow->initialCreditPkts;
     if (next_credit < flow->totalPackets)
     {
-        SendCredit(*flow, next_credit);
+        EnqueueCredit(*flow, next_credit);
     }
     if (flow->receivedSeqs.size() >= flow->totalPackets)
     {
@@ -666,6 +740,27 @@ FlareHostApp::PacketPayloadBytes(const FlowState& flow, uint32_t seq) const
         return 0;
     }
     return std::min(flow.packetSizeBytes, flow.sizeBytes - sent);
+}
+
+Time
+FlareHostApp::CreditPaceInterval(const FlowState& flow) const
+{
+    if (m_hostLinkRateBps == 0)
+    {
+        return Time(0);
+    }
+    const uint64_t data_bytes =
+        static_cast<uint64_t>(std::max(1u, flow.packetSizeBytes));
+    const uint64_t ns =
+        (data_bytes * 8ULL * 1000000000ULL + m_hostLinkRateBps - 1ULL) /
+        m_hostLinkRateBps;
+    return NanoSeconds(ns);
+}
+
+uint64_t
+FlareHostApp::CreditKey(uint32_t flow_id, uint32_t seq)
+{
+    return (static_cast<uint64_t>(flow_id) << 32) | seq;
 }
 
 void

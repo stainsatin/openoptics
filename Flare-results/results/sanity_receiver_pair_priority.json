@@ -1,0 +1,1996 @@
+{
+  "credit_paths": {
+    "r10-long-s12": [
+      10,
+      6,
+      7,
+      3,
+      12
+    ],
+    "r10-short-s2": [
+      10,
+      6,
+      2
+    ],
+    "r11-long-s7": [
+      11,
+      9,
+      8,
+      7
+    ],
+    "r11-short-s9": [
+      11,
+      9
+    ],
+    "r12-long-s4": [
+      12,
+      3,
+      7,
+      8,
+      4
+    ],
+    "r12-short-s3": [
+      12,
+      3
+    ],
+    "r2-long-s1": [
+      2,
+      6,
+      7,
+      1
+    ],
+    "r2-short-s6": [
+      2,
+      6
+    ]
+  },
+  "experiment": "flare_receiver_pair_priority",
+  "flows": [
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 24,
+      "credit_hop_cost_sent": 24,
+      "credit_hops": 3,
+      "credit_loss_proxy": 0,
+      "credit_path": "2->6->7->1",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 1.8e-05,
+      "flow_id": 2,
+      "goodput_bps": 3640888888.888889,
+      "group_name": "r2-long-s1",
+      "name": "r2-long-s1-f000",
+      "priority_class": "long",
+      "priority_rank": 0,
+      "receiver": 2,
+      "retransmissions": 0,
+      "sender": 1,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 8,
+      "credit_hop_cost_sent": 8,
+      "credit_hops": 1,
+      "credit_loss_proxy": 0,
+      "credit_path": "2->6",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 8e-06,
+      "flow_id": 1,
+      "goodput_bps": 8192000000.0,
+      "group_name": "r2-short-s6",
+      "name": "r2-short-s6-f000",
+      "priority_class": "short",
+      "priority_rank": 0,
+      "receiver": 2,
+      "retransmissions": 0,
+      "sender": 6,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": false,
+      "credit_delivery_ratio": 0.75,
+      "credit_hop_cost_received": 24,
+      "credit_hop_cost_sent": 32,
+      "credit_hops": 4,
+      "credit_loss_proxy": 2,
+      "credit_path": "10->6->7->3->12",
+      "credit_tax_proxy": 8,
+      "credits_received": 6,
+      "credits_sent": 8,
+      "data_packets_received": 6,
+      "data_packets_sent": 6,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "flow_id": 4,
+      "goodput_bps": null,
+      "group_name": "r10-long-s12",
+      "name": "r10-long-s12-f000",
+      "priority_class": "long",
+      "priority_rank": 0,
+      "receiver": 10,
+      "retransmissions": 0,
+      "sender": 12,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 16,
+      "credit_hop_cost_sent": 16,
+      "credit_hops": 2,
+      "credit_loss_proxy": 0,
+      "credit_path": "10->6->2",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 1.3e-05,
+      "flow_id": 3,
+      "goodput_bps": 5041230769.230769,
+      "group_name": "r10-short-s2",
+      "name": "r10-short-s2-f000",
+      "priority_class": "short",
+      "priority_rank": 0,
+      "receiver": 10,
+      "retransmissions": 0,
+      "sender": 2,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 24,
+      "credit_hop_cost_sent": 24,
+      "credit_hops": 3,
+      "credit_loss_proxy": 0,
+      "credit_path": "11->9->8->7",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 1.8e-05,
+      "flow_id": 6,
+      "goodput_bps": 3640888888.888889,
+      "group_name": "r11-long-s7",
+      "name": "r11-long-s7-f000",
+      "priority_class": "long",
+      "priority_rank": 0,
+      "receiver": 11,
+      "retransmissions": 0,
+      "sender": 7,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 8,
+      "credit_hop_cost_sent": 8,
+      "credit_hops": 1,
+      "credit_loss_proxy": 0,
+      "credit_path": "11->9",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 8e-06,
+      "flow_id": 5,
+      "goodput_bps": 8192000000.0,
+      "group_name": "r11-short-s9",
+      "name": "r11-short-s9-f000",
+      "priority_class": "short",
+      "priority_rank": 0,
+      "receiver": 11,
+      "retransmissions": 0,
+      "sender": 9,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 32,
+      "credit_hop_cost_sent": 32,
+      "credit_hops": 4,
+      "credit_loss_proxy": 0,
+      "credit_path": "12->3->7->8->4",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 2.2e-05,
+      "flow_id": 8,
+      "goodput_bps": 2978909090.909091,
+      "group_name": "r12-long-s4",
+      "name": "r12-long-s4-f000",
+      "priority_class": "long",
+      "priority_rank": 0,
+      "receiver": 12,
+      "retransmissions": 0,
+      "sender": 4,
+      "start_s": 0.000105,
+      "timeouts": 0
+    },
+    {
+      "completed": true,
+      "credit_delivery_ratio": 1.0,
+      "credit_hop_cost_received": 8,
+      "credit_hop_cost_sent": 8,
+      "credit_hops": 1,
+      "credit_loss_proxy": 0,
+      "credit_path": "12->3",
+      "credit_tax_proxy": 0,
+      "credits_received": 8,
+      "credits_sent": 8,
+      "data_packets_received": 8,
+      "data_packets_sent": 8,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": 8e-06,
+      "flow_id": 7,
+      "goodput_bps": 8192000000.0,
+      "group_name": "r12-short-s3",
+      "name": "r12-short-s3-f000",
+      "priority_class": "short",
+      "priority_rank": 0,
+      "receiver": 12,
+      "retransmissions": 0,
+      "sender": 3,
+      "start_s": 0.000105,
+      "timeouts": 0
+    }
+  ],
+  "parameters": {
+    "dashboard": false,
+    "duration": 0.0001,
+    "flare_aeolus_thresh": 4096,
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flare_shaping_thresh": 4096,
+    "flare_tentative_threshold": 100,
+    "flow_size": 0,
+    "flows_per_pair": 1,
+    "gap_us": 0.0,
+    "guardband_us": 0,
+    "host_bw": 100.0,
+    "host_delay_us": 1,
+    "initial_credit": 8,
+    "mtu": 1024,
+    "ocs_bw": 100.0,
+    "ocs_delay_us": 1,
+    "order": "simultaneous",
+    "output": "results/sanity_receiver_pair_priority.json",
+    "profile": "15us",
+    "receiver_gap_us": 0.0,
+    "refresh_timeout_us": 1000.0,
+    "replica_gap_us": 0.0,
+    "resolved_flow_size": 8192,
+    "start": 0.000105,
+    "stop": 0.00025,
+    "target_loss": 0.1
+  },
+  "routes": {
+    "0->10@0": [
+      0,
+      6,
+      10
+    ],
+    "0->11@0": [
+      0,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "0->12@0": [
+      0,
+      6,
+      7,
+      3,
+      12
+    ],
+    "0->1@0": [
+      0,
+      6,
+      7,
+      1
+    ],
+    "0->2@0": [
+      0,
+      6,
+      2
+    ],
+    "0->3@0": [
+      0,
+      6,
+      7,
+      3
+    ],
+    "0->4@0": [
+      0,
+      6,
+      7,
+      8,
+      4
+    ],
+    "0->5@0": [
+      0,
+      6,
+      7,
+      8,
+      9,
+      5
+    ],
+    "0->6@0": [
+      0,
+      6
+    ],
+    "0->7@0": [
+      0,
+      6,
+      7
+    ],
+    "0->8@0": [
+      0,
+      6,
+      7,
+      8
+    ],
+    "0->9@0": [
+      0,
+      6,
+      7,
+      8,
+      9
+    ],
+    "1->0@0": [
+      1,
+      7,
+      6,
+      0
+    ],
+    "1->10@0": [
+      1,
+      7,
+      6,
+      10
+    ],
+    "1->11@0": [
+      1,
+      7,
+      8,
+      9,
+      11
+    ],
+    "1->12@0": [
+      1,
+      7,
+      3,
+      12
+    ],
+    "1->2@0": [
+      1,
+      7,
+      6,
+      2
+    ],
+    "1->3@0": [
+      1,
+      7,
+      3
+    ],
+    "1->4@0": [
+      1,
+      7,
+      8,
+      4
+    ],
+    "1->5@0": [
+      1,
+      7,
+      8,
+      9,
+      5
+    ],
+    "1->6@0": [
+      1,
+      7,
+      6
+    ],
+    "1->7@0": [
+      1,
+      7
+    ],
+    "1->8@0": [
+      1,
+      7,
+      8
+    ],
+    "1->9@0": [
+      1,
+      7,
+      8,
+      9
+    ],
+    "10->0@0": [
+      10,
+      6,
+      0
+    ],
+    "10->11@0": [
+      10,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "10->12@0": [
+      10,
+      6,
+      7,
+      3,
+      12
+    ],
+    "10->1@0": [
+      10,
+      6,
+      7,
+      1
+    ],
+    "10->2@0": [
+      10,
+      6,
+      2
+    ],
+    "10->3@0": [
+      10,
+      6,
+      7,
+      3
+    ],
+    "10->4@0": [
+      10,
+      6,
+      7,
+      8,
+      4
+    ],
+    "10->5@0": [
+      10,
+      6,
+      7,
+      8,
+      9,
+      5
+    ],
+    "10->6@0": [
+      10,
+      6
+    ],
+    "10->7@0": [
+      10,
+      6,
+      7
+    ],
+    "10->8@0": [
+      10,
+      6,
+      7,
+      8
+    ],
+    "10->9@0": [
+      10,
+      6,
+      7,
+      8,
+      9
+    ],
+    "11->0@0": [
+      11,
+      9,
+      8,
+      7,
+      6,
+      0
+    ],
+    "11->10@0": [
+      11,
+      9,
+      8,
+      7,
+      6,
+      10
+    ],
+    "11->12@0": [
+      11,
+      9,
+      8,
+      7,
+      3,
+      12
+    ],
+    "11->1@0": [
+      11,
+      9,
+      8,
+      7,
+      1
+    ],
+    "11->2@0": [
+      11,
+      9,
+      8,
+      7,
+      6,
+      2
+    ],
+    "11->3@0": [
+      11,
+      9,
+      8,
+      7,
+      3
+    ],
+    "11->4@0": [
+      11,
+      9,
+      8,
+      4
+    ],
+    "11->5@0": [
+      11,
+      9,
+      5
+    ],
+    "11->6@0": [
+      11,
+      9,
+      8,
+      7,
+      6
+    ],
+    "11->7@0": [
+      11,
+      9,
+      8,
+      7
+    ],
+    "11->8@0": [
+      11,
+      9,
+      8
+    ],
+    "11->9@0": [
+      11,
+      9
+    ],
+    "12->0@0": [
+      12,
+      3,
+      7,
+      6,
+      0
+    ],
+    "12->10@0": [
+      12,
+      3,
+      7,
+      6,
+      10
+    ],
+    "12->11@0": [
+      12,
+      3,
+      7,
+      8,
+      9,
+      11
+    ],
+    "12->1@0": [
+      12,
+      3,
+      7,
+      1
+    ],
+    "12->2@0": [
+      12,
+      3,
+      7,
+      6,
+      2
+    ],
+    "12->3@0": [
+      12,
+      3
+    ],
+    "12->4@0": [
+      12,
+      3,
+      7,
+      8,
+      4
+    ],
+    "12->5@0": [
+      12,
+      3,
+      7,
+      8,
+      9,
+      5
+    ],
+    "12->6@0": [
+      12,
+      3,
+      7,
+      6
+    ],
+    "12->7@0": [
+      12,
+      3,
+      7
+    ],
+    "12->8@0": [
+      12,
+      3,
+      7,
+      8
+    ],
+    "12->9@0": [
+      12,
+      3,
+      7,
+      8,
+      9
+    ],
+    "2->0@0": [
+      2,
+      6,
+      0
+    ],
+    "2->10@0": [
+      2,
+      6,
+      10
+    ],
+    "2->11@0": [
+      2,
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "2->12@0": [
+      2,
+      6,
+      7,
+      3,
+      12
+    ],
+    "2->1@0": [
+      2,
+      6,
+      7,
+      1
+    ],
+    "2->3@0": [
+      2,
+      6,
+      7,
+      3
+    ],
+    "2->4@0": [
+      2,
+      6,
+      7,
+      8,
+      4
+    ],
+    "2->5@0": [
+      2,
+      6,
+      7,
+      8,
+      9,
+      5
+    ],
+    "2->6@0": [
+      2,
+      6
+    ],
+    "2->7@0": [
+      2,
+      6,
+      7
+    ],
+    "2->8@0": [
+      2,
+      6,
+      7,
+      8
+    ],
+    "2->9@0": [
+      2,
+      6,
+      7,
+      8,
+      9
+    ],
+    "3->0@0": [
+      3,
+      7,
+      6,
+      0
+    ],
+    "3->10@0": [
+      3,
+      7,
+      6,
+      10
+    ],
+    "3->11@0": [
+      3,
+      7,
+      8,
+      9,
+      11
+    ],
+    "3->12@0": [
+      3,
+      12
+    ],
+    "3->1@0": [
+      3,
+      7,
+      1
+    ],
+    "3->2@0": [
+      3,
+      7,
+      6,
+      2
+    ],
+    "3->4@0": [
+      3,
+      7,
+      8,
+      4
+    ],
+    "3->5@0": [
+      3,
+      7,
+      8,
+      9,
+      5
+    ],
+    "3->6@0": [
+      3,
+      7,
+      6
+    ],
+    "3->7@0": [
+      3,
+      7
+    ],
+    "3->8@0": [
+      3,
+      7,
+      8
+    ],
+    "3->9@0": [
+      3,
+      7,
+      8,
+      9
+    ],
+    "4->0@0": [
+      4,
+      8,
+      7,
+      6,
+      0
+    ],
+    "4->10@0": [
+      4,
+      8,
+      7,
+      6,
+      10
+    ],
+    "4->11@0": [
+      4,
+      8,
+      9,
+      11
+    ],
+    "4->12@0": [
+      4,
+      8,
+      7,
+      3,
+      12
+    ],
+    "4->1@0": [
+      4,
+      8,
+      7,
+      1
+    ],
+    "4->2@0": [
+      4,
+      8,
+      7,
+      6,
+      2
+    ],
+    "4->3@0": [
+      4,
+      8,
+      7,
+      3
+    ],
+    "4->5@0": [
+      4,
+      8,
+      9,
+      5
+    ],
+    "4->6@0": [
+      4,
+      8,
+      7,
+      6
+    ],
+    "4->7@0": [
+      4,
+      8,
+      7
+    ],
+    "4->8@0": [
+      4,
+      8
+    ],
+    "4->9@0": [
+      4,
+      8,
+      9
+    ],
+    "5->0@0": [
+      5,
+      9,
+      8,
+      7,
+      6,
+      0
+    ],
+    "5->10@0": [
+      5,
+      9,
+      8,
+      7,
+      6,
+      10
+    ],
+    "5->11@0": [
+      5,
+      9,
+      11
+    ],
+    "5->12@0": [
+      5,
+      9,
+      8,
+      7,
+      3,
+      12
+    ],
+    "5->1@0": [
+      5,
+      9,
+      8,
+      7,
+      1
+    ],
+    "5->2@0": [
+      5,
+      9,
+      8,
+      7,
+      6,
+      2
+    ],
+    "5->3@0": [
+      5,
+      9,
+      8,
+      7,
+      3
+    ],
+    "5->4@0": [
+      5,
+      9,
+      8,
+      4
+    ],
+    "5->6@0": [
+      5,
+      9,
+      8,
+      7,
+      6
+    ],
+    "5->7@0": [
+      5,
+      9,
+      8,
+      7
+    ],
+    "5->8@0": [
+      5,
+      9,
+      8
+    ],
+    "5->9@0": [
+      5,
+      9
+    ],
+    "6->0@0": [
+      6,
+      0
+    ],
+    "6->10@0": [
+      6,
+      10
+    ],
+    "6->11@0": [
+      6,
+      7,
+      8,
+      9,
+      11
+    ],
+    "6->12@0": [
+      6,
+      7,
+      3,
+      12
+    ],
+    "6->1@0": [
+      6,
+      7,
+      1
+    ],
+    "6->2@0": [
+      6,
+      2
+    ],
+    "6->3@0": [
+      6,
+      7,
+      3
+    ],
+    "6->4@0": [
+      6,
+      7,
+      8,
+      4
+    ],
+    "6->5@0": [
+      6,
+      7,
+      8,
+      9,
+      5
+    ],
+    "6->7@0": [
+      6,
+      7
+    ],
+    "6->8@0": [
+      6,
+      7,
+      8
+    ],
+    "6->9@0": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "7->0@0": [
+      7,
+      6,
+      0
+    ],
+    "7->10@0": [
+      7,
+      6,
+      10
+    ],
+    "7->11@0": [
+      7,
+      8,
+      9,
+      11
+    ],
+    "7->12@0": [
+      7,
+      3,
+      12
+    ],
+    "7->1@0": [
+      7,
+      1
+    ],
+    "7->2@0": [
+      7,
+      6,
+      2
+    ],
+    "7->3@0": [
+      7,
+      3
+    ],
+    "7->4@0": [
+      7,
+      8,
+      4
+    ],
+    "7->5@0": [
+      7,
+      8,
+      9,
+      5
+    ],
+    "7->6@0": [
+      7,
+      6
+    ],
+    "7->8@0": [
+      7,
+      8
+    ],
+    "7->9@0": [
+      7,
+      8,
+      9
+    ],
+    "8->0@0": [
+      8,
+      7,
+      6,
+      0
+    ],
+    "8->10@0": [
+      8,
+      7,
+      6,
+      10
+    ],
+    "8->11@0": [
+      8,
+      9,
+      11
+    ],
+    "8->12@0": [
+      8,
+      7,
+      3,
+      12
+    ],
+    "8->1@0": [
+      8,
+      7,
+      1
+    ],
+    "8->2@0": [
+      8,
+      7,
+      6,
+      2
+    ],
+    "8->3@0": [
+      8,
+      7,
+      3
+    ],
+    "8->4@0": [
+      8,
+      4
+    ],
+    "8->5@0": [
+      8,
+      9,
+      5
+    ],
+    "8->6@0": [
+      8,
+      7,
+      6
+    ],
+    "8->7@0": [
+      8,
+      7
+    ],
+    "8->9@0": [
+      8,
+      9
+    ],
+    "9->0@0": [
+      9,
+      8,
+      7,
+      6,
+      0
+    ],
+    "9->10@0": [
+      9,
+      8,
+      7,
+      6,
+      10
+    ],
+    "9->11@0": [
+      9,
+      11
+    ],
+    "9->12@0": [
+      9,
+      8,
+      7,
+      3,
+      12
+    ],
+    "9->1@0": [
+      9,
+      8,
+      7,
+      1
+    ],
+    "9->2@0": [
+      9,
+      8,
+      7,
+      6,
+      2
+    ],
+    "9->3@0": [
+      9,
+      8,
+      7,
+      3
+    ],
+    "9->4@0": [
+      9,
+      8,
+      4
+    ],
+    "9->5@0": [
+      9,
+      5
+    ],
+    "9->6@0": [
+      9,
+      8,
+      7,
+      6
+    ],
+    "9->7@0": [
+      9,
+      8,
+      7
+    ],
+    "9->8@0": [
+      9,
+      8
+    ]
+  },
+  "summary": {
+    "class_summary": {
+      "long": {
+        "completed_flow_count": 3,
+        "credit_delivery_ratio": 0.9375,
+        "credit_hop_cost_received": 104,
+        "credit_hop_cost_sent": 112,
+        "credit_loss_proxy": 2,
+        "credit_tax_proxy": 8,
+        "credits_received": 30,
+        "credits_sent": 32,
+        "data_packets_received": 30,
+        "data_packets_sent": 30,
+        "flow_count": 4,
+        "mean_fct_s": 1.9333333333333333e-05,
+        "mean_goodput_bps": 3420228956.228956,
+        "p95_fct_s": 2.16e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "short": {
+        "completed_flow_count": 4,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 40,
+        "credit_hop_cost_sent": 40,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 32,
+        "credits_sent": 32,
+        "data_packets_received": 32,
+        "data_packets_sent": 32,
+        "flow_count": 4,
+        "mean_fct_s": 9.25e-06,
+        "mean_goodput_bps": 7404307692.307693,
+        "p95_fct_s": 1.2249999999999996e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      }
+    },
+    "expected_first_burst_pressure": {
+      "burst_per_flow": 8,
+      "by_credit_edge": {
+        "10->6": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "11->9": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "12->3": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "2->6": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "3->12": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "3->7": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "6->2": {
+          "long": 0,
+          "short": 8,
+          "total": 8
+        },
+        "6->7": {
+          "long": 16,
+          "short": 0,
+          "total": 16
+        },
+        "7->1": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "7->3": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "7->8": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "8->4": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "8->7": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        },
+        "9->8": {
+          "long": 8,
+          "short": 0,
+          "total": 8
+        }
+      },
+      "by_receiver": {
+        "10": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "11": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "12": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "2": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        }
+      },
+      "initial_credit_burst_total": 64,
+      "note": "This is offered initial-credit pressure. Actual drops depend on ns-3 event order, link service release, and multi-hop propagation.",
+      "shared_receiver_first_hops": {
+        "10->6": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "11->9": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "12->3": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        },
+        "2->6": {
+          "long": 8,
+          "short": 8,
+          "total": 16
+        }
+      }
+    },
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flow_count": 8,
+    "flow_packets": 8,
+    "flow_size": 8192,
+    "flows_per_pair": 1,
+    "gap_us": 0.0,
+    "group_summary": {
+      "r10-long-s12": {
+        "completed_flow_count": 0,
+        "credit_delivery_ratio": 0.75,
+        "credit_hop_cost_received": 24,
+        "credit_hop_cost_sent": 32,
+        "credit_loss_proxy": 2,
+        "credit_tax_proxy": 8,
+        "credits_received": 6,
+        "credits_sent": 8,
+        "data_packets_received": 6,
+        "data_packets_sent": 6,
+        "flow_count": 1,
+        "mean_fct_s": null,
+        "mean_goodput_bps": null,
+        "p95_fct_s": null,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r10-short-s2": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 16,
+        "credit_hop_cost_sent": 16,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 1.3e-05,
+        "mean_goodput_bps": 5041230769.230769,
+        "p95_fct_s": 1.3e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r11-long-s7": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 24,
+        "credit_hop_cost_sent": 24,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 1.8e-05,
+        "mean_goodput_bps": 3640888888.888889,
+        "p95_fct_s": 1.8e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r11-short-s9": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 8,
+        "credit_hop_cost_sent": 8,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 8e-06,
+        "mean_goodput_bps": 8192000000.0,
+        "p95_fct_s": 8e-06,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r12-long-s4": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 32,
+        "credit_hop_cost_sent": 32,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 2.2e-05,
+        "mean_goodput_bps": 2978909090.909091,
+        "p95_fct_s": 2.2e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r12-short-s3": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 8,
+        "credit_hop_cost_sent": 8,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 8e-06,
+        "mean_goodput_bps": 8192000000.0,
+        "p95_fct_s": 8e-06,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r2-long-s1": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 24,
+        "credit_hop_cost_sent": 24,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 1.8e-05,
+        "mean_goodput_bps": 3640888888.888889,
+        "p95_fct_s": 1.8e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "r2-short-s6": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 8,
+        "credit_hop_cost_sent": 8,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 8,
+        "credits_sent": 8,
+        "data_packets_received": 8,
+        "data_packets_sent": 8,
+        "flow_count": 1,
+        "mean_fct_s": 8e-06,
+        "mean_goodput_bps": 8192000000.0,
+        "p95_fct_s": 8e-06,
+        "retransmissions": 0,
+        "timeouts": 0
+      }
+    },
+    "initial_credit": 8,
+    "order": "simultaneous",
+    "priority_model": "Each receiver has one short and one long credit class. The order changes receiver-side initial-credit scheduling; gap_us=0 keeps both classes in the same burst and relies on installation/event order to represent priority.",
+    "receiver_gap_us": 0.0,
+    "receiver_summary": {
+      "10": {
+        "completed_flow_count": 1,
+        "credit_delivery_ratio": 0.875,
+        "credit_hop_cost_received": 40,
+        "credit_hop_cost_sent": 48,
+        "credit_loss_proxy": 2,
+        "credit_tax_proxy": 8,
+        "credits_received": 14,
+        "credits_sent": 16,
+        "data_packets_received": 14,
+        "data_packets_sent": 14,
+        "flow_count": 2,
+        "mean_fct_s": 1.3e-05,
+        "mean_goodput_bps": 5041230769.230769,
+        "p95_fct_s": 1.3e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "11": {
+        "completed_flow_count": 2,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 32,
+        "credit_hop_cost_sent": 32,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 16,
+        "credits_sent": 16,
+        "data_packets_received": 16,
+        "data_packets_sent": 16,
+        "flow_count": 2,
+        "mean_fct_s": 1.3000000000000001e-05,
+        "mean_goodput_bps": 5916444444.444445,
+        "p95_fct_s": 1.75e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "12": {
+        "completed_flow_count": 2,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 40,
+        "credit_hop_cost_sent": 40,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 16,
+        "credits_sent": 16,
+        "data_packets_received": 16,
+        "data_packets_sent": 16,
+        "flow_count": 2,
+        "mean_fct_s": 1.4999999999999999e-05,
+        "mean_goodput_bps": 5585454545.454546,
+        "p95_fct_s": 2.13e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      },
+      "2": {
+        "completed_flow_count": 2,
+        "credit_delivery_ratio": 1.0,
+        "credit_hop_cost_received": 32,
+        "credit_hop_cost_sent": 32,
+        "credit_loss_proxy": 0,
+        "credit_tax_proxy": 0,
+        "credits_received": 16,
+        "credits_sent": 16,
+        "data_packets_received": 16,
+        "data_packets_sent": 16,
+        "flow_count": 2,
+        "mean_fct_s": 1.3000000000000001e-05,
+        "mean_goodput_bps": 5916444444.444445,
+        "p95_fct_s": 1.75e-05,
+        "retransmissions": 0,
+        "timeouts": 0
+      }
+    },
+    "replica_gap_us": 0.0,
+    "scenario": "receiver-local-short-long-credit-priority",
+    "short_minus_long_credit_delivery": 0.0625,
+    "short_minus_long_mean_fct_s": -1.0083333333333334e-05,
+    "short_minus_long_mean_goodput_bps": 3984078736.0787363,
+    "topology": "user static tor10-6-7-8-9-11 with branches to 0,1,2,3,4,5,12",
+    "tor_summary": {
+      "0": {
+        "credit_admitted": 0,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 0,
+        "delivered": 0,
+        "drops": 0,
+        "forwarded": 0,
+        "from_host": 0,
+        "from_uplink": 0,
+        "overflow_drops": 0,
+        "stage": "leaf/sender",
+        "tor": 0
+      },
+      "1": {
+        "credit_admitted": 0,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 8,
+        "delivered": 9,
+        "drops": 0,
+        "forwarded": 8,
+        "from_host": 8,
+        "from_uplink": 9,
+        "overflow_drops": 0,
+        "stage": "leaf/sender",
+        "tor": 1
+      },
+      "10": {
+        "credit_admitted": 16,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 0,
+        "delivered": 14,
+        "drops": 0,
+        "forwarded": 17,
+        "from_host": 17,
+        "from_uplink": 14,
+        "overflow_drops": 0,
+        "stage": "receiver10 first-hop",
+        "tor": 10
+      },
+      "11": {
+        "credit_admitted": 16,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 0,
+        "delivered": 16,
+        "drops": 0,
+        "forwarded": 18,
+        "from_host": 18,
+        "from_uplink": 16,
+        "overflow_drops": 0,
+        "stage": "receiver11 first-hop",
+        "tor": 11
+      },
+      "12": {
+        "credit_admitted": 16,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 6,
+        "delivered": 22,
+        "drops": 0,
+        "forwarded": 24,
+        "from_host": 24,
+        "from_uplink": 22,
+        "overflow_drops": 0,
+        "stage": "receiver12 first-hop / sender-long10",
+        "tor": 12
+      },
+      "2": {
+        "credit_admitted": 16,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 8,
+        "delivered": 25,
+        "drops": 0,
+        "forwarded": 26,
+        "from_host": 26,
+        "from_uplink": 25,
+        "overflow_drops": 0,
+        "stage": "receiver2 first-hop / sender-short",
+        "tor": 2
+      },
+      "3": {
+        "credit_admitted": 14,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 22,
+        "delivered": 9,
+        "drops": 0,
+        "forwarded": 37,
+        "from_host": 8,
+        "from_uplink": 38,
+        "overflow_drops": 0,
+        "stage": "receiver12 short sender / branch to 7 or 12",
+        "tor": 3
+      },
+      "4": {
+        "credit_admitted": 0,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 8,
+        "delivered": 9,
+        "drops": 0,
+        "forwarded": 8,
+        "from_host": 8,
+        "from_uplink": 9,
+        "overflow_drops": 0,
+        "stage": "leaf/sender",
+        "tor": 4
+      },
+      "5": {
+        "credit_admitted": 0,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 0,
+        "delivered": 0,
+        "drops": 0,
+        "forwarded": 0,
+        "from_host": 0,
+        "from_uplink": 0,
+        "overflow_drops": 0,
+        "stage": "leaf/sender",
+        "tor": 5
+      },
+      "6": {
+        "credit_admitted": 22,
+        "credit_dropped": 2,
+        "credit_wasted": 0,
+        "data_packets_seen": 30,
+        "delivered": 9,
+        "drops": 2,
+        "forwarded": 54,
+        "from_host": 8,
+        "from_uplink": 57,
+        "overflow_drops": 0,
+        "stage": "tor6 hub",
+        "tor": 6
+      },
+      "7": {
+        "credit_admitted": 22,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 30,
+        "delivered": 9,
+        "drops": 0,
+        "forwarded": 54,
+        "from_host": 8,
+        "from_uplink": 55,
+        "overflow_drops": 0,
+        "stage": "tor7 hub",
+        "tor": 7
+      },
+      "8": {
+        "credit_admitted": 16,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 16,
+        "delivered": 0,
+        "drops": 0,
+        "forwarded": 34,
+        "from_host": 0,
+        "from_uplink": 34,
+        "overflow_drops": 0,
+        "stage": "tor8 hub",
+        "tor": 8
+      },
+      "9": {
+        "credit_admitted": 8,
+        "credit_dropped": 0,
+        "credit_wasted": 0,
+        "data_packets_seen": 16,
+        "delivered": 9,
+        "drops": 0,
+        "forwarded": 25,
+        "from_host": 8,
+        "from_uplink": 26,
+        "overflow_drops": 0,
+        "stage": "receiver11 first-hop / sender-short",
+        "tor": 9
+      }
+    },
+    "total_credit_delivery_ratio": 0.96875,
+    "total_credit_loss_proxy": 2,
+    "total_credit_tax_proxy": 8,
+    "total_credits_received": 62,
+    "total_credits_sent": 64,
+    "total_tor_credit_admitted": 146,
+    "total_tor_credit_dropped": 2,
+    "total_tor_credit_wasted": 0,
+    "warning": null
+  },
+  "tors": [
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 0,
+      "drops": 0,
+      "forwarded": 0,
+      "from_host": 0,
+      "from_uplink": 0,
+      "overflow_drops": 0,
+      "stage": "leaf/sender",
+      "tor": 0
+    },
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 8,
+      "delivered": 9,
+      "drops": 0,
+      "forwarded": 8,
+      "from_host": 8,
+      "from_uplink": 9,
+      "overflow_drops": 0,
+      "stage": "leaf/sender",
+      "tor": 1
+    },
+    {
+      "credit_admitted": 16,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 8,
+      "delivered": 25,
+      "drops": 0,
+      "forwarded": 26,
+      "from_host": 26,
+      "from_uplink": 25,
+      "overflow_drops": 0,
+      "stage": "receiver2 first-hop / sender-short",
+      "tor": 2
+    },
+    {
+      "credit_admitted": 14,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 22,
+      "delivered": 9,
+      "drops": 0,
+      "forwarded": 37,
+      "from_host": 8,
+      "from_uplink": 38,
+      "overflow_drops": 0,
+      "stage": "receiver12 short sender / branch to 7 or 12",
+      "tor": 3
+    },
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 8,
+      "delivered": 9,
+      "drops": 0,
+      "forwarded": 8,
+      "from_host": 8,
+      "from_uplink": 9,
+      "overflow_drops": 0,
+      "stage": "leaf/sender",
+      "tor": 4
+    },
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 0,
+      "drops": 0,
+      "forwarded": 0,
+      "from_host": 0,
+      "from_uplink": 0,
+      "overflow_drops": 0,
+      "stage": "leaf/sender",
+      "tor": 5
+    },
+    {
+      "credit_admitted": 22,
+      "credit_dropped": 2,
+      "credit_wasted": 0,
+      "data_packets_seen": 30,
+      "delivered": 9,
+      "drops": 2,
+      "forwarded": 54,
+      "from_host": 8,
+      "from_uplink": 57,
+      "overflow_drops": 0,
+      "stage": "tor6 hub",
+      "tor": 6
+    },
+    {
+      "credit_admitted": 22,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 30,
+      "delivered": 9,
+      "drops": 0,
+      "forwarded": 54,
+      "from_host": 8,
+      "from_uplink": 55,
+      "overflow_drops": 0,
+      "stage": "tor7 hub",
+      "tor": 7
+    },
+    {
+      "credit_admitted": 16,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 16,
+      "delivered": 0,
+      "drops": 0,
+      "forwarded": 34,
+      "from_host": 0,
+      "from_uplink": 34,
+      "overflow_drops": 0,
+      "stage": "tor8 hub",
+      "tor": 8
+    },
+    {
+      "credit_admitted": 8,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 16,
+      "delivered": 9,
+      "drops": 0,
+      "forwarded": 25,
+      "from_host": 8,
+      "from_uplink": 26,
+      "overflow_drops": 0,
+      "stage": "receiver11 first-hop / sender-short",
+      "tor": 9
+    },
+    {
+      "credit_admitted": 16,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 14,
+      "drops": 0,
+      "forwarded": 17,
+      "from_host": 17,
+      "from_uplink": 14,
+      "overflow_drops": 0,
+      "stage": "receiver10 first-hop",
+      "tor": 10
+    },
+    {
+      "credit_admitted": 16,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 16,
+      "drops": 0,
+      "forwarded": 18,
+      "from_host": 18,
+      "from_uplink": 16,
+      "overflow_drops": 0,
+      "stage": "receiver11 first-hop",
+      "tor": 11
+    },
+    {
+      "credit_admitted": 16,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 6,
+      "delivered": 22,
+      "drops": 0,
+      "forwarded": 24,
+      "from_host": 24,
+      "from_uplink": 22,
+      "overflow_drops": 0,
+      "stage": "receiver12 first-hop / sender-long10",
+      "tor": 12
+    }
+  ]
+}

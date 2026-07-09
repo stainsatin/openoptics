@@ -1,0 +1,2 @@
+flow_id,src,dst,fct_s,throughput_bps,data_packets_sent,data_packets_received,credits_sent,credits_received,credits_admitted,credits_dropped,credits_wasted,retransmissions,timeouts,duplicate_data,duplicate_credits,path_len_1,path_len_2,path_len_3
+1,0,1,0.001422,360056258.79043597,69,63,70,70,70,0,0,6,59,6,0,63,0,0

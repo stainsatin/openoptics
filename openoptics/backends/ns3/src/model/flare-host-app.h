@@ -12,9 +12,11 @@
 #include "ns3/socket.h"
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace ns3
 {
@@ -38,6 +40,7 @@ class FlareHostApp : public Application
                           double target_loss,
                           uint32_t mtu_bytes,
                           double retransmission_timeout_s);
+    void SetHostLinkRateBps(uint64_t bps);
 
     void AddSenderFlow(uint32_t flow_id,
                        uint32_t dst_node,
@@ -135,6 +138,9 @@ class FlareHostApp : public Application
 
     void SendInitialCredits(uint32_t flow_id);
     void RefreshCredits(uint32_t flow_id);
+    void EnqueueCredit(FlowState& flow, uint32_t seq);
+    void ScheduleCreditPacer();
+    void RunCreditPacer();
     void SendEligibleData(uint32_t flow_id);
     void OnRetransmissionTimeout(uint32_t flow_id, uint32_t seq);
     void SendCredit(FlowState& flow, uint32_t seq);
@@ -156,6 +162,8 @@ class FlareHostApp : public Application
     FlowState* FindSenderFlow(uint32_t flow_id);
     FlowState* FindReceiverFlow(uint32_t flow_id);
     uint32_t PacketPayloadBytes(const FlowState& flow, uint32_t seq) const;
+    Time CreditPaceInterval(const FlowState& flow) const;
+    static uint64_t CreditKey(uint32_t flow_id, uint32_t seq);
 
     uint32_t m_nodeId;
     Ptr<NetDevice> m_hostDev;
@@ -167,6 +175,11 @@ class FlareHostApp : public Application
     double m_targetLoss;
     uint32_t m_mtuBytes;
     Time m_retransmissionTimeout;
+    uint64_t m_hostLinkRateBps;
+    Time m_nextCreditSendTime;
+    EventId m_creditPacingEvent;
+    std::deque<std::pair<uint32_t, uint32_t>> m_pendingCredits;
+    std::unordered_set<uint64_t> m_pendingCreditKeys;
     std::unordered_map<uint32_t, FlowState> m_senderFlows;
     std::unordered_map<uint32_t, FlowState> m_receiverFlows;
     Ptr<UniformRandomVariable> m_flareAdmissionRng;

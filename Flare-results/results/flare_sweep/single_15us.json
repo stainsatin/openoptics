@@ -1,0 +1,53 @@
+{
+  "flows": [
+    {
+      "credits_admitted": 70,
+      "credits_dropped": 0,
+      "credits_received": 70,
+      "credits_sent": 70,
+      "credits_wasted": 0,
+      "data_packets_received": 63,
+      "data_packets_sent": 69,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 6,
+      "fct_s": 0.001422,
+      "flow_id": 1,
+      "path_len_1": 63,
+      "path_len_2": 0,
+      "path_len_3": 0,
+      "retransmissions": 6,
+      "src": 0,
+      "throughput_bps": 360056258.79043597,
+      "timeouts": 59
+    }
+  ],
+  "summary": {
+    "completed_flow_count": 1,
+    "completion_fraction": 1.0,
+    "credit_drop_fraction": 0.0,
+    "credit_waste_fraction": 0.0,
+    "fct_median_s": 0.001422,
+    "fct_p95_s": 0.001422,
+    "fct_p99_s": 0.001422,
+    "flow_count": 1,
+    "links": 1,
+    "nodes": 4,
+    "profile": "15us",
+    "routing": "direct",
+    "scenario": "single",
+    "throughput_sum_bps": 360056258.79043597,
+    "topology": "round-robin",
+    "total_credits_admitted": 70,
+    "total_credits_dropped": 0,
+    "total_credits_received": 70,
+    "total_credits_sent": 70,
+    "total_credits_wasted": 0,
+    "total_data_packets_received": 63,
+    "total_data_packets_sent": 69,
+    "total_duplicate_credits": 0,
+    "total_duplicate_data": 6,
+    "total_retransmissions": 6,
+    "total_timeouts": 59
+  }
+}

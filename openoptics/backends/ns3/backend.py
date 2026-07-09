@@ -1478,6 +1478,7 @@ class Ns3Backend(BackendBase):
             app.SetVerifySrCurNode(self._verify_sr_cur_node)
             app.SetAdmissionControl(self._admission_control)
             app.SetFlareCreditQueueSizePkts(self._flare_config.credit_qsize_pkts)
+            app.SetFlareCreditPacingMtuBytes(self._flare_config.mtu_bytes)
             app.SetFlareShapingThresholdPkts(self._flare_config.shaping_thresh_pkts)
             app.SetFlareAeolusThresholdPkts(self._flare_config.aeolus_thresh_pkts)
             app.SetFlareCongestionThreshold(self._flare_config.congestion_threshold_percent)
@@ -1498,6 +1499,9 @@ class Ns3Backend(BackendBase):
                 self._flare_config.target_loss,
                 self._flare_config.mtu_bytes,
                 self._flare_config.retransmission_timeout_s,
+            )
+            fapp.SetHostLinkRateBps(
+                int(tor_host_link_bw_mbps) * 1_000_000
             )
             fapp.SetHostDevice(
                 self._host_nodes[node_id].GetDevice(0)

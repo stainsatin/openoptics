@@ -1,0 +1,14 @@
+tor,stage,from_host,from_uplink,forwarded,delivered,drops,overflow_drops,credit_admitted,credit_dropped,credit_wasted,data_packets_seen
+0,leaf/sender,0,0,0,0,0,0,0,0,0,0
+1,leaf/sender,8,9,8,9,0,0,0,0,0,8
+2,receiver2 first-hop / sender-short,26,25,26,25,0,0,16,0,0,8
+3,receiver12 short sender / branch to 7 or 12,8,38,37,9,0,0,14,0,0,22
+4,leaf/sender,8,9,8,9,0,0,0,0,0,8
+5,leaf/sender,0,0,0,0,0,0,0,0,0,0
+6,tor6 hub,8,57,54,9,2,0,22,2,0,30
+7,tor7 hub,8,55,54,9,0,0,22,0,0,30
+8,tor8 hub,0,34,34,0,0,0,16,0,0,16
+9,receiver11 first-hop / sender-short,8,26,25,9,0,0,8,0,0,16
+10,receiver10 first-hop,17,14,17,14,0,0,16,0,0,0
+11,receiver11 first-hop,18,16,18,16,0,0,16,0,0,0
+12,receiver12 first-hop / sender-long10,24,22,24,22,0,0,16,0,0,6

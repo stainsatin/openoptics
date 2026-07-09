@@ -1,0 +1,5 @@
+flow_id,name,hop_class,src,dst,data_path_conceptual,credit_path_nodes,start_s,credit_min_hops,credit_max_hops,credit_avg_hops,credit_start_hops,fct_s,throughput_bps,data_packets_sent,data_packets_received,credits_sent,credits_received,credit_loss_proxy,credit_delivery_ratio,credit_tax,credit_hop_cost_sent,credit_hop_cost_received,credit_hop_loss_cost,retransmissions,timeouts,path_len_0,path_len_1,path_len_2,path_len_3,path_len_4
+1,long-r0-far,long,3,0,3->0,0->1->2->3,0.0001,3,3,3.0,3,nan,nan,16,15,2515,16,2499,0.006361829025844931,167.66666666666666,7545,48,7497,1,16,0,15,0,0,0
+2,long-r1-far,long,3,1,3->1,1->2->3,0.0001,2,2,2.0,2,nan,nan,18,17,2517,18,2499,0.007151370679380214,148.05882352941177,5034,36,4998,1,18,0,17,0,0,0
+3,short-r0-near,short,1,0,1->0,0->1,0.000101,1,1,1.0,1,nan,nan,39,39,2539,39,2500,0.01536037810161481,65.1025641025641,2539,39,2500,0,39,0,39,0,0,0
+4,short-r1-near,short,2,1,2->1,1->2,0.000101,1,1,1.0,1,nan,nan,26,26,2526,26,2500,0.010292953285827395,97.15384615384616,2526,26,2500,0,26,0,26,0,0,0

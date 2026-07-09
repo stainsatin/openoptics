@@ -1,0 +1,9 @@
+distance,tor,from_host,from_uplink,forwarded,delivered,drops,overflow_drops,credit_admitted,credit_dropped,credit_wasted,data_packets_seen,drop_forward_send_fail,drop_forward_cq,drop_adm_fail,drop_aeolus_unscheduled
+2,0,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,1,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,2,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,3,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,4,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,5,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,6,17,34,34,17,0,0,16,0,0,16,0,0,0,0
+2,7,17,34,34,17,0,0,16,0,0,16,0,0,0,0

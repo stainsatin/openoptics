@@ -1,0 +1,17 @@
+{
+  "experiment": "microbench",
+  "config": {
+    "flow_size": 65536,
+    "profile": "55us"
+  },
+  "metrics": {
+    "fct_ms": 4.6579999999999995,
+    "throughput_gbps": 0.11343580936024045,
+    "packets_sent": 65,
+    "packets_received": 43,
+    "packet_loss_rate": 0.3384615384615385,
+    "credit_efficiency": 0.6515151515151515,
+    "retransmissions": 22
+  },
+  "timestamp": "2026-06-16 20:42:34"
+}

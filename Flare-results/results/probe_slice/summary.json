@@ -1,0 +1,50 @@
+{
+  "class_summary": {
+    "long": {
+      "completed_flow_count": 3,
+      "flow_count": 8,
+      "mean_credit_avg_hops": 1.0,
+      "mean_credit_delivery_ratio": 0.5413306486168117,
+      "mean_credit_start_hops": 4.875,
+      "mean_credit_tax": 3.832245243703887,
+      "mean_fct_s": 0.243917,
+      "sum_throughput_bps": 832657239.6093974,
+      "total_credit_loss_proxy": 91964,
+      "total_credits_received": 63434,
+      "total_credits_sent": 155398,
+      "total_data_packets_received": 51740,
+      "total_retransmissions": 3745,
+      "total_timeouts": 55468
+    },
+    "short": {
+      "completed_flow_count": 8,
+      "flow_count": 8,
+      "mean_credit_avg_hops": 1.0,
+      "mean_credit_delivery_ratio": 0.9958285678511372,
+      "mean_credit_start_hops": 1,
+      "mean_credit_tax": 1.139678955078125,
+      "mean_fct_s": 0.22893325,
+      "sum_throughput_bps": 2387163950.3607526,
+      "total_credit_loss_proxy": 312,
+      "total_credits_received": 74378,
+      "total_credits_sent": 74690,
+      "total_data_packets_received": 65536,
+      "total_retransmissions": 6437,
+      "total_timeouts": 71885
+    }
+  },
+  "flow_size": 8388608,
+  "flows_per_class": 8,
+  "gap_us": 1.0,
+  "links": 4,
+  "long_min_start_threshold": 3,
+  "nodes": 16,
+  "order": "simultaneous",
+  "profile": "55us",
+  "receivers": 8,
+  "start_s": 0.000155,
+  "start_slice": 2,
+  "tor_credit_admitted": 515819,
+  "tor_credit_dropped": 0,
+  "tor_credit_wasted": 0
+}

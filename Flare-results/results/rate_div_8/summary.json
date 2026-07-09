@@ -1,0 +1,18 @@
+{
+  "experiment": "flare_rate_divergence",
+  "parameters": {
+    "senders": 8,
+    "flow_size": 65536,
+    "profile": "55us",
+    "mtu": 1024
+  },
+  "analysis": {
+    "total_flows": 8,
+    "completed_flows": 8,
+    "top_20_percent_credit_share": 0.09146968139773895,
+    "cv_credit_rate": 0.2509370407556156,
+    "mean_credit_rate": 13891.824237813024,
+    "mean_fct_s": 0.011607875,
+    "median_fct_s": 0.0066235
+  }
+}

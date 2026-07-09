@@ -1,0 +1,214 @@
+{
+  "experiment": "flare_dual_receiver_credit_drop",
+  "flows": [
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 4,
+      "credit_path": "0->2->3",
+      "credits_received": 4,
+      "credits_sent": 8,
+      "data_packets_received": 4,
+      "data_packets_sent": 4,
+      "dst": 0,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver0",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 4,
+      "credit_path": "1->2->3",
+      "credits_received": 4,
+      "credits_sent": 8,
+      "data_packets_received": 4,
+      "data_packets_sent": 4,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver1",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    }
+  ],
+  "parameters": {
+    "dashboard": false,
+    "duration": 8e-05,
+    "flare_aeolus_thresh": 4096,
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flare_shaping_thresh": 4096,
+    "flare_tentative_threshold": 100,
+    "flow_size": 0,
+    "flows_per_receiver": 1,
+    "guardband_us": 0,
+    "host_bw": 100.0,
+    "host_delay_us": 1,
+    "initial_credit": 8,
+    "mtu": 1024,
+    "ocs_bw": 100.0,
+    "ocs_delay_us": 1,
+    "output": "results/flare_dual_receiver_credit_drop_test.json",
+    "profile": "15us",
+    "resolved_flow_size": 8192,
+    "start": 0.000105,
+    "stop": 0.00018,
+    "target_loss": 0.1,
+    "w_init": 1.0
+  },
+  "routes": {
+    "0->1@0": [
+      0,
+      2,
+      1
+    ],
+    "0->2@0": [
+      0,
+      2
+    ],
+    "0->3@0": [
+      0,
+      2,
+      3
+    ],
+    "1->0@0": [
+      1,
+      2,
+      0
+    ],
+    "1->2@0": [
+      1,
+      2
+    ],
+    "1->3@0": [
+      1,
+      2,
+      3
+    ],
+    "2->0@0": [
+      2,
+      0
+    ],
+    "2->1@0": [
+      2,
+      1
+    ],
+    "2->3@0": [
+      2,
+      3
+    ],
+    "3->0@0": [
+      3,
+      2,
+      0
+    ],
+    "3->1@0": [
+      3,
+      2,
+      1
+    ],
+    "3->2@0": [
+      3,
+      2
+    ]
+  },
+  "summary": {
+    "credit_drop_observed": true,
+    "credit_paths": [
+      "0->2->3",
+      "1->2->3"
+    ],
+    "data_flows": "3->0 and 3->1",
+    "first_burst_model": {
+      "applies_cleanly": true,
+      "assumptions": "w_init=1, congestion_threshold=100, no refresh before stop, and all initial credits reach tor2 in one credit-admission epoch",
+      "burst_per_flow": 8,
+      "burst_total": 16,
+      "expected_first_hop_admitted": 16,
+      "expected_tor2_bottleneck_admitted": 8,
+      "expected_tor2_bottleneck_dropped": 8,
+      "expected_total_credit_admitted": 24,
+      "flow_packets": 8
+    },
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flow_count": 2,
+    "flow_size": 8192,
+    "initial_credit": 8,
+    "intended_bottleneck": "tor2 egress to tor3, port 2, slice 0",
+    "mtu": 1024,
+    "possible_over_accept_signal": false,
+    "scenario": "dual-receiver shared credit bottleneck",
+    "topology": "0--2--3 and 1--2--3, one static slice",
+    "tor2_credit_admitted": 8,
+    "tor2_credit_dropped": 8,
+    "tor2_drop_observed_expected_ratio": 1.0,
+    "total_credit_loss_proxy": 8,
+    "total_credits_received": 8,
+    "total_credits_sent": 16,
+    "total_tor_credit_admitted": 24,
+    "total_tor_credit_dropped": 8,
+    "total_tor_credit_wasted": 0,
+    "verdict": "tor2 credit drops are present and meet or exceed the first-burst queue model.",
+    "w_init": 1.0
+  },
+  "tors": [
+    {
+      "credit_admitted": 8,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 4,
+      "drops": 0,
+      "forwarded": 8,
+      "from_host": 8,
+      "from_uplink": 4,
+      "overflow_drops": 0,
+      "tor": 0
+    },
+    {
+      "credit_admitted": 8,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 4,
+      "drops": 0,
+      "forwarded": 8,
+      "from_host": 8,
+      "from_uplink": 4,
+      "overflow_drops": 0,
+      "tor": 1
+    },
+    {
+      "credit_admitted": 8,
+      "credit_dropped": 8,
+      "credit_wasted": 0,
+      "data_packets_seen": 8,
+      "delivered": 0,
+      "drops": 8,
+      "forwarded": 16,
+      "from_host": 0,
+      "from_uplink": 24,
+      "overflow_drops": 0,
+      "tor": 2
+    },
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 8,
+      "delivered": 8,
+      "drops": 0,
+      "forwarded": 8,
+      "from_host": 8,
+      "from_uplink": 8,
+      "overflow_drops": 0,
+      "tor": 3
+    }
+  ]
+}

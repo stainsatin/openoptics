@@ -153,6 +153,7 @@ class TorApp : public Application
     uint64_t GetFlareCreditDataPackets() const;
 
     void SetFlareCreditQueueSizePkts(uint32_t pkts);
+    void SetFlareCreditPacingMtuBytes(uint32_t bytes);
     void SetFlareShapingThresholdPkts(uint32_t pkts);
     void SetFlareAeolusThresholdPkts(uint32_t pkts);
     void SetFlareCongestionThreshold(uint32_t percent);
@@ -241,6 +242,10 @@ class TorApp : public Application
     // enqueue time rather than link-in-flight state at drain time.
     bool CanFinishInActiveWindow(uint32_t uplink_idx, uint32_t slot,
                                  std::size_t pkt_bytes) const;
+    bool CanFinishInActiveWindowFrom(uint32_t uplink_idx,
+                                     uint32_t slot,
+                                     std::size_t pkt_bytes,
+                                     Time earliest_start) const;
 
     // Recompute m_effectiveActiveUs after slice duration / guardband /
     // propagation-delay setters change.
@@ -251,7 +256,6 @@ class TorApp : public Application
     // AddUplinkDevice in any order.
     void ResizeCqBytesPerSlot();
     void ResizeFlareCreditState();
-    void ResetFlareCreditAdmissions(uint32_t slice);
 
     // Rebuild m_cq with one calendar queue per uplink, each sized to
     // m_numSlices. No-op once StartApplication has run (would discard live
@@ -274,9 +278,9 @@ class TorApp : public Application
     bool AdmitFlareCredit(uint32_t send_ts,
                           uint32_t send_port,
                           const FlareHeader& flare);
-    void ReleaseFlareCredit(uint32_t send_ts,
-                            uint32_t send_port,
-                            const FlareHeader& flare);
+    void AddQueuedFlareCredit(uint32_t send_ts, uint32_t send_port);
+    void RemoveQueuedFlareCredit(uint32_t send_ts, uint32_t send_port);
+    Time CreditPaceInterval() const;
     void InitAdmissionProbTable();
     double GetAdmissionProb(uint32_t remaining_hops) const;
 
@@ -404,8 +408,11 @@ class TorApp : public Application
     // contention is independent. Sized lazily by SetNumSlices and
     // AddUplinkDevice in any order.
     std::vector<std::vector<uint64_t>> m_cqBytesPerSlot;
+    // Live Flare credit packets currently resident in the calendar queue,
+    // indexed by (slot, uplink). Kept as true queue occupancy.
     std::vector<std::vector<uint32_t>> m_flareCreditPktsPerSlot;
     uint32_t m_flareCreditQsizePkts = 60;
+    uint32_t m_flareCreditPacingMtuBytes = 1024;
     uint32_t m_flareShapingThreshPkts = 30;
     uint32_t m_flareAeolusThreshPkts = 40;
     uint32_t m_flareCongestionThresholdPercent = 50;  // Congestion threshold (%)
@@ -423,6 +430,9 @@ class TorApp : public Application
     // the packet's serialization time. Read by CanFinishInActiveWindow.
     // Sized in lockstep with m_uplinks.
     std::vector<Time> m_linkFreeAt;
+    // Per-uplink credit shaper. Credits cannot leave the ToR faster than
+    // one credit per roughly one MTU-sized data-packet service time.
+    std::vector<Time> m_creditLinkFreeAt;
 
     // Active-window inputs: guardband + uplink propagation delay shrink
     // the in-slice window m_effectiveActiveUs (cached; recomputed by

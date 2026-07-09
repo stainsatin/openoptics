@@ -1,0 +1,12 @@
+{
+  "experiment": "throughput_vs_size",
+  "config": {
+    "profile": "55us"
+  },
+  "metrics": {
+    "flow_sizes_tested": 5,
+    "mean_throughput_gbps": 0.09136653316585494,
+    "mean_utilization": 0.0009136653316585495
+  },
+  "timestamp": "2026-06-16 21:21:23"
+}

@@ -1,0 +1,316 @@
+{
+  "experiment": "flare_dual_receiver_credit_drop",
+  "flows": [
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 6,
+      "credit_path": "0->2->3",
+      "credits_received": 58,
+      "credits_sent": 64,
+      "data_packets_received": 35,
+      "data_packets_sent": 35,
+      "dst": 0,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver0-r0",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 58,
+      "credit_path": "1->2->3",
+      "credits_received": 6,
+      "credits_sent": 64,
+      "data_packets_received": 6,
+      "data_packets_sent": 6,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver1-r0",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 13,
+      "credit_path": "0->2->3",
+      "credits_received": 51,
+      "credits_sent": 64,
+      "data_packets_received": 1,
+      "data_packets_sent": 1,
+      "dst": 0,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver0-r1",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 64,
+      "credit_path": "1->2->3",
+      "credits_received": 0,
+      "credits_sent": 64,
+      "data_packets_received": 0,
+      "data_packets_sent": 0,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver1-r1",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 13,
+      "credit_path": "0->2->3",
+      "credits_received": 51,
+      "credits_sent": 64,
+      "data_packets_received": 2,
+      "data_packets_sent": 2,
+      "dst": 0,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver0-r2",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 64,
+      "credit_path": "1->2->3",
+      "credits_received": 0,
+      "credits_sent": 64,
+      "data_packets_received": 0,
+      "data_packets_sent": 0,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver1-r2",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 13,
+      "credit_path": "0->2->3",
+      "credits_received": 51,
+      "credits_sent": 64,
+      "data_packets_received": 3,
+      "data_packets_sent": 3,
+      "dst": 0,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver0-r3",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    },
+    {
+      "credit_hops": 2,
+      "credit_loss_proxy": 64,
+      "credit_path": "1->2->3",
+      "credits_received": 0,
+      "credits_sent": 64,
+      "data_packets_received": 0,
+      "data_packets_sent": 0,
+      "dst": 1,
+      "duplicate_credits": 0,
+      "duplicate_data": 0,
+      "fct_s": null,
+      "name": "sender3-to-receiver1-r3",
+      "retransmissions": 0,
+      "src": 3,
+      "timeouts": 0
+    }
+  ],
+  "parameters": {
+    "dashboard": false,
+    "duration": 8e-05,
+    "flare_aeolus_thresh": 4096,
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flare_shaping_thresh": 4096,
+    "flare_tentative_threshold": 100,
+    "flow_size": 65536,
+    "flows_per_receiver": 4,
+    "guardband_us": 0,
+    "host_bw": 100.0,
+    "host_delay_us": 1,
+    "initial_credit": 64,
+    "mtu": 1024,
+    "ocs_bw": 100.0,
+    "ocs_delay_us": 1,
+    "output": "results/flare_dual_receiver_credit_drop_big.json",
+    "profile": "15us",
+    "resolved_flow_size": 65536,
+    "start": 0.000105,
+    "stop": 0.0003,
+    "target_loss": 0.1,
+    "w_init": 1.0
+  },
+  "routes": {
+    "0->1@0": [
+      0,
+      2,
+      1
+    ],
+    "0->2@0": [
+      0,
+      2
+    ],
+    "0->3@0": [
+      0,
+      2,
+      3
+    ],
+    "1->0@0": [
+      1,
+      2,
+      0
+    ],
+    "1->2@0": [
+      1,
+      2
+    ],
+    "1->3@0": [
+      1,
+      2,
+      3
+    ],
+    "2->0@0": [
+      2,
+      0
+    ],
+    "2->1@0": [
+      2,
+      1
+    ],
+    "2->3@0": [
+      2,
+      3
+    ],
+    "3->0@0": [
+      3,
+      2,
+      0
+    ],
+    "3->1@0": [
+      3,
+      2,
+      1
+    ],
+    "3->2@0": [
+      3,
+      2
+    ]
+  },
+  "summary": {
+    "credit_drop_observed": true,
+    "credit_paths": [
+      "0->2->3",
+      "1->2->3"
+    ],
+    "data_flows": "3->0 and 3->1",
+    "first_burst_model": {
+      "applies_cleanly": true,
+      "assumptions": "w_init=1, congestion_threshold=100, no refresh before stop, and all initial credits reach tor2 in one credit-admission epoch",
+      "burst_per_flow": 64,
+      "burst_total": 512,
+      "expected_first_hop_admitted": 512,
+      "expected_tor2_bottleneck_admitted": 8,
+      "expected_tor2_bottleneck_dropped": 504,
+      "expected_total_credit_admitted": 520,
+      "flow_packets": 64
+    },
+    "flare_congestion_threshold": 100,
+    "flare_credit_qsize": 8,
+    "flow_count": 8,
+    "flow_size": 65536,
+    "initial_credit": 64,
+    "intended_bottleneck": "tor2 egress to tor3, port 2, slice 0",
+    "mtu": 1024,
+    "possible_over_accept_signal": true,
+    "scenario": "dual-receiver shared credit bottleneck",
+    "topology": "0--2--3 and 1--2--3, one static slice",
+    "tor2_credit_admitted": 217,
+    "tor2_credit_dropped": 205,
+    "tor2_drop_observed_expected_ratio": 0.40674603174603174,
+    "total_credit_loss_proxy": 295,
+    "total_credits_received": 217,
+    "total_credits_sent": 512,
+    "total_tor_credit_admitted": 639,
+    "total_tor_credit_dropped": 295,
+    "total_tor_credit_wasted": 0,
+    "verdict": "tor2 dropped fewer credits than the first-burst queue model predicts.",
+    "w_init": 1.0
+  },
+  "tors": [
+    {
+      "credit_admitted": 211,
+      "credit_dropped": 45,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 41,
+      "drops": 45,
+      "forwarded": 211,
+      "from_host": 256,
+      "from_uplink": 41,
+      "overflow_drops": 0,
+      "tor": 0
+    },
+    {
+      "credit_admitted": 211,
+      "credit_dropped": 45,
+      "credit_wasted": 0,
+      "data_packets_seen": 0,
+      "delivered": 6,
+      "drops": 45,
+      "forwarded": 211,
+      "from_host": 256,
+      "from_uplink": 6,
+      "overflow_drops": 0,
+      "tor": 1
+    },
+    {
+      "credit_admitted": 217,
+      "credit_dropped": 205,
+      "credit_wasted": 0,
+      "data_packets_seen": 47,
+      "delivered": 0,
+      "drops": 205,
+      "forwarded": 264,
+      "from_host": 0,
+      "from_uplink": 469,
+      "overflow_drops": 0,
+      "tor": 2
+    },
+    {
+      "credit_admitted": 0,
+      "credit_dropped": 0,
+      "credit_wasted": 0,
+      "data_packets_seen": 47,
+      "delivered": 217,
+      "drops": 0,
+      "forwarded": 47,
+      "from_host": 47,
+      "from_uplink": 217,
+      "overflow_drops": 0,
+      "tor": 3
+    }
+  ]
+}

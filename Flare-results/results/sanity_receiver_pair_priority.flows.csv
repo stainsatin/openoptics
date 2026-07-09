@@ -1,0 +1,9 @@
+flow_id,name,group_name,receiver,sender,priority_class,start_s,priority_rank,credit_path,credit_hops,fct_s,completed,goodput_bps,credits_sent,credits_received,credit_delivery_ratio,credit_loss_proxy,credit_tax_proxy,credit_hop_cost_sent,credit_hop_cost_received,data_packets_sent,data_packets_received,duplicate_credits,duplicate_data,timeouts,retransmissions
+2,r2-long-s1-f000,r2-long-s1,2,1,long,0.000105,0,2->6->7->1,3,1.8e-05,True,3640888888.888889,8,8,1.0,0,0,24,24,8,8,0,0,0,0
+1,r2-short-s6-f000,r2-short-s6,2,6,short,0.000105,0,2->6,1,8e-06,True,8192000000.0,8,8,1.0,0,0,8,8,8,8,0,0,0,0
+4,r10-long-s12-f000,r10-long-s12,10,12,long,0.000105,0,10->6->7->3->12,4,nan,False,nan,8,6,0.75,2,8,32,24,6,6,0,0,0,0
+3,r10-short-s2-f000,r10-short-s2,10,2,short,0.000105,0,10->6->2,2,1.3e-05,True,5041230769.230769,8,8,1.0,0,0,16,16,8,8,0,0,0,0
+6,r11-long-s7-f000,r11-long-s7,11,7,long,0.000105,0,11->9->8->7,3,1.8e-05,True,3640888888.888889,8,8,1.0,0,0,24,24,8,8,0,0,0,0
+5,r11-short-s9-f000,r11-short-s9,11,9,short,0.000105,0,11->9,1,8e-06,True,8192000000.0,8,8,1.0,0,0,8,8,8,8,0,0,0,0
+8,r12-long-s4-f000,r12-long-s4,12,4,long,0.000105,0,12->3->7->8->4,4,2.2e-05,True,2978909090.909091,8,8,1.0,0,0,32,32,8,8,0,0,0,0
+7,r12-short-s3-f000,r12-short-s3,12,3,short,0.000105,0,12->3,1,8e-06,True,8192000000.0,8,8,1.0,0,0,8,8,8,8,0,0,0,0

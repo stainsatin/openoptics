@@ -1,0 +1,17 @@
+{
+  "experiment": "incast",
+  "config": {
+    "senders": 16,
+    "flow_size": 65536
+  },
+  "metrics": {
+    "completed_flows": 6,
+    "total_flows": 16,
+    "mean_fct_ms": 23.9475,
+    "median_fct_ms": 22.798000000000002,
+    "p99_fct_ms": 29.291999999999998,
+    "mean_throughput_gbps": 0.022430644138250907,
+    "total_throughput_gbps": 0.13458386482950546
+  },
+  "timestamp": "2026-06-16 20:46:35"
+}

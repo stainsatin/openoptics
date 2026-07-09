@@ -117,6 +117,12 @@ TorApp::SetUplinkLinkRateBps(uint64_t bps)
 }
 
 void
+TorApp::SetFlareCreditPacingMtuBytes(uint32_t bytes)
+{
+    m_flareCreditPacingMtuBytes = std::max(1u, bytes);
+}
+
+void
 TorApp::SetGuardbandUs(uint64_t us)
 {
     m_guardbandUs = us;
@@ -177,18 +183,6 @@ TorApp::ResizeFlareCreditState()
 }
 
 void
-TorApp::ResetFlareCreditAdmissions(uint32_t slice)
-{
-    if (slice >= m_flareCreditPktsPerSlot.size())
-    {
-        return;
-    }
-    std::fill(m_flareCreditPktsPerSlot[slice].begin(),
-              m_flareCreditPktsPerSlot[slice].end(),
-              0);
-}
-
-void
 TorApp::EnsureCalendarQueues()
 {
     if (m_sliceBoundaryEvent.IsPending())
@@ -244,6 +238,7 @@ TorApp::AddUplinkDevice(Ptr<NetDevice> device)
     uint32_t idx = m_uplinks.size();
     m_uplinks.push_back(device);
     m_linkFreeAt.push_back(Time(0));
+    m_creditLinkFreeAt.push_back(Time(0));
     GetNode()->RegisterProtocolHandler(
         MakeCallback(&TorApp::ReceiveFromUplink, this),
         /*protocol=*/0,
@@ -488,11 +483,10 @@ void
 TorApp::OnSliceBoundary()
 {
     // m_linkFreeAt is an absolute simulator timestamp, so cycle wrap
-    // can't leave stale state.  Flare credit admissions are per-slice
-    // tokens, so they reset when a new active window begins.
+    // can't leave stale state. Flare credit queue occupancy mirrors live
+    // calendar-queue contents and is decremented when credits leave/drop.
     const uint32_t slice = CurrentSlice();
     DrainSlice(slice);
-    ResetFlareCreditAdmissions(slice);
     ScheduleNextSliceBoundary();
 }
 
@@ -535,13 +529,39 @@ TorApp::DrainSlice(uint32_t slice)
                     // 主动丢弃 unscheduled 包
                     m_cq[uplink].Dequeue(slice, &pkt, &cookie);
                     RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
+                    if (is_flare_credit)
+                    {
+                        RemoveQueuedFlareCredit(slice, uplink);
+                        ++m_flareCreditWasted;
+                    }
                     ++m_drops;
                     ++m_dropAeolusUnscheduled;
                     continue;
                 }
             }
 
-            if (!CanFinishInActiveWindow(uplink, slice, pkt_bytes))
+            const Time now = Simulator::Now();
+            if (is_flare_credit && uplink < m_creditLinkFreeAt.size())
+            {
+                const Time credit_ready =
+                    std::max(now, m_creditLinkFreeAt[uplink]);
+                if (credit_ready > now)
+                {
+                    if (CanFinishInActiveWindowFrom(uplink,
+                                                    slice,
+                                                    pkt_bytes,
+                                                    credit_ready))
+                    {
+                        Simulator::Schedule(credit_ready - now,
+                                            &TorApp::DrainSlice,
+                                            this,
+                                            slice);
+                    }
+                    break;
+                }
+            }
+
+            if (!CanFinishInActiveWindowFrom(uplink, slice, pkt_bytes, now))
             {
                 if (m_linkFreeAt[uplink] > Simulator::Now())
                 {
@@ -553,11 +573,11 @@ TorApp::DrainSlice(uint32_t slice)
                     RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
                     if (is_flare_credit)
                     {
-                        ReleaseFlareCredit(slice, uplink, flare);
+                        RemoveQueuedFlareCredit(slice, uplink);
                         ++m_flareCreditWasted;
                     }
                     ++m_drops;
-                        ++m_sliceOverflowDrops;
+                    ++m_sliceOverflowDrops;
                     continue;
                 }
                 // Late-in-slice + link idle: too close to the active-
@@ -571,11 +591,14 @@ TorApp::DrainSlice(uint32_t slice)
             // the updated state.
             m_cq[uplink].Dequeue(slice, &pkt, &cookie);
             RemoveBufferedPacketBytes(slice, uplink, pkt_bytes);
+            if (is_flare_credit)
+            {
+                RemoveQueuedFlareCredit(slice, uplink);
+            }
             const uint64_t serialize_ns =
                 (static_cast<uint64_t>(pkt_bytes) * 8ULL * 1000000000ULL
                  + m_uplinkLinkRateBps - 1ULL)
                 / m_uplinkLinkRateBps;
-            const Time now = Simulator::Now();
             m_linkFreeAt[uplink] =
                 std::max(now, m_linkFreeAt[uplink])
                 + NanoSeconds(serialize_ns);
@@ -586,9 +609,19 @@ TorApp::DrainSlice(uint32_t slice)
             }
             if (!dev->Send(pkt, dev->GetBroadcast(), /*protocol=*/0x0800))
             {
+                if (is_flare_credit)
+                {
+                    ++m_flareCreditWasted;
+                }
                 ++m_drops;
                 ++m_dropForwardSendFail;
                 continue;
+            }
+            if (is_flare_credit && uplink < m_creditLinkFreeAt.size())
+            {
+                m_creditLinkFreeAt[uplink] =
+                    std::max(now, m_creditLinkFreeAt[uplink]) +
+                    CreditPaceInterval();
             }
             ++m_forwarded;
         }
@@ -638,13 +671,25 @@ bool
 TorApp::CanFinishInActiveWindow(uint32_t uplink_idx, uint32_t slot,
                                 std::size_t pkt_bytes) const
 {
+    return CanFinishInActiveWindowFrom(uplink_idx,
+                                       slot,
+                                       pkt_bytes,
+                                       Simulator::Now());
+}
+
+bool
+TorApp::CanFinishInActiveWindowFrom(uint32_t uplink_idx,
+                                    uint32_t slot,
+                                    std::size_t pkt_bytes,
+                                    Time earliest_start) const
+{
     if (uplink_idx >= m_linkFreeAt.size() || m_uplinkLinkRateBps == 0
         || m_sliceDurationUs == 0 || m_numSlices == 0)
     {
         return false;
     }
     const Time now = Simulator::Now();
-    const Time link_free = std::max(now, m_linkFreeAt[uplink_idx]);
+    const Time link_free = std::max(earliest_start, m_linkFreeAt[uplink_idx]);
 
     // Slot start: the current slot's start (already in the past) if
     // ``slot == cur_slice``, else the next future occurrence of that
@@ -676,6 +721,21 @@ TorApp::CanFinishInActiveWindow(uint32_t uplink_idx, uint32_t slot,
          + m_uplinkLinkRateBps - 1ULL)
         / m_uplinkLinkRateBps;
     return (link_free + NanoSeconds(serialize_ns)) <= deadline;
+}
+
+Time
+TorApp::CreditPaceInterval() const
+{
+    if (m_uplinkLinkRateBps == 0)
+    {
+        return Time(0);
+    }
+    const uint64_t paced_bytes =
+        static_cast<uint64_t>(std::max(1u, m_flareCreditPacingMtuBytes));
+    const uint64_t ns =
+        (paced_bytes * 8ULL * 1000000000ULL + m_uplinkLinkRateBps - 1ULL) /
+        m_uplinkLinkRateBps;
+    return NanoSeconds(ns);
 }
 
 
@@ -932,7 +992,8 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
         return false;
     }
 
-    uint32_t& occupancy = m_flareCreditPktsPerSlot[send_ts][send_port];
+    const uint32_t occupancy =
+        m_flareCreditPktsPerSlot[send_ts][send_port];
 
     // 1. 始终拒绝超过队列大小的包
     if (occupancy >= m_flareCreditQsizePkts)
@@ -957,7 +1018,6 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
             return false;
         }
         // 通过 tentative 检查，接纳
-        ++occupancy;
         ++m_flareCreditAdmitted;
         return true;
     }
@@ -968,7 +1028,6 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
 
     if (occupancy < congestion_thresh)
     {
-        ++occupancy;
         ++m_flareCreditAdmitted;
         return true;
     }
@@ -980,7 +1039,6 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
 
     if (rand_val <= admit_prob)
     {
-        ++occupancy;
         ++m_flareCreditAdmitted;
         return true;
     }
@@ -993,18 +1051,25 @@ TorApp::AdmitFlareCredit(uint32_t send_ts,
 }
 
 void
-TorApp::ReleaseFlareCredit(uint32_t send_ts,
-                           uint32_t send_port,
-                           const FlareHeader& /*flare*/)
+TorApp::AddQueuedFlareCredit(uint32_t send_ts, uint32_t send_port)
+{
+    if (send_ts < m_flareCreditPktsPerSlot.size() &&
+        send_port < m_flareCreditPktsPerSlot[send_ts].size())
+    {
+        ++m_flareCreditPktsPerSlot[send_ts][send_port];
+    }
+}
+
+void
+TorApp::RemoveQueuedFlareCredit(uint32_t send_ts, uint32_t send_port)
 {
     if (send_ts < m_flareCreditPktsPerSlot.size() &&
         send_port < m_flareCreditPktsPerSlot[send_ts].size())
     {
         uint32_t& occupancy = m_flareCreditPktsPerSlot[send_ts][send_port];
-        if (occupancy > 0)
-        {
-            --occupancy;
-        }
+        NS_ABORT_MSG_IF(occupancy == 0,
+                        "TorApp: Flare credit queue occupancy underflow");
+        --occupancy;
     }
 }
 
@@ -1262,7 +1327,6 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     {
         if (is_flare_credit)
         {
-            ReleaseFlareCredit(send_ts, send_port, flare);
             ++m_flareCreditWasted;
         }
         ++m_drops;
@@ -1273,7 +1337,6 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
     {
         if (is_flare_credit)
         {
-            ReleaseFlareCredit(send_ts, send_port, flare);
             ++m_flareCreditWasted;
         }
         // Invalid slice id. CalendarQueue tracks this internally too;
@@ -1292,6 +1355,10 @@ TorApp::ForwardOnSlice(Ptr<Packet> pkt_with_headers,
         send_port < m_cqBytesPerSlot[send_ts].size())
     {
         m_cqBytesPerSlot[send_ts][send_port] += pkt_bytes_u64;
+    }
+    if (is_flare_credit)
+    {
+        AddQueuedFlareCredit(send_ts, send_port);
     }
     // Same-slice arrival: OnSliceBoundary for this slot already fired,
     // so without an immediate drain the packet would sit until the slot
