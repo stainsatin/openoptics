@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace ns3
 {
@@ -282,7 +283,10 @@ FlareHostApp::HandleFlarePacket(Ptr<Packet> pkt)
         HandleCredit(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops(), flare.GetTimeSlice());
         break;
     case FlareHeader::DATA:
-        HandleData(flare.GetFlowId(), flare.GetSeq(), flare.GetRemainingHops());
+        HandleData(flare.GetFlowId(),
+                   flare.GetSeq(),
+                   flare.GetRemainingHops(),
+                   flare.GetCreditEpoch());
         break;
     case FlareHeader::CONTROL:
         HandleControl(flare.GetFlowId(), flare.GetControlCode());
@@ -325,38 +329,22 @@ FlareHostApp::RefreshCredits(uint32_t flow_id)
         return;
     }
 
-    // Credit packets can be wasted by slice/path mismatch before they
-    // reach the sender. Periodically refresh credits for the current
-    // receiver window so the flow converges when a later slice admits
-    // the reverse-path credit.
-    const uint32_t delivered = static_cast<uint32_t>(flow->receivedSeqs.size());
-    const uint32_t window_end =
-        std::min(flow->totalPackets, delivered + flow->initialCreditPkts);
-
     bool credit_loss = false;
     const Time now = Simulator::Now();
-    for (uint32_t seq = 0; seq < window_end; ++seq)
+    std::vector<uint32_t> refresh_ids;
+    for (const auto& kv : flow->creditSentAt)
     {
-        if (flow->receivedSeqs.find(seq) != flow->receivedSeqs.end())
-        {
-            continue;
-        }
-        auto sent_it = flow->creditSentAt.find(seq);
-        if (sent_it != flow->creditSentAt.end() &&
-            now - sent_it->second >= m_retransmissionTimeout)
+        if (now - kv.second >= m_retransmissionTimeout)
         {
             credit_loss = true;
-            break;
+            refresh_ids.push_back(kv.first);
         }
     }
     AdjustCreditRate(*flow, credit_loss);
 
-    for (uint32_t seq = 0; seq < window_end; ++seq)
+    for (uint32_t credit_id : refresh_ids)
     {
-        if (flow->receivedSeqs.find(seq) == flow->receivedSeqs.end())
-        {
-            EnqueueCredit(*flow, seq);
-        }
+        EnqueueCredit(*flow, credit_id);
     }
 
     flow->creditRefreshEvent =
@@ -368,8 +356,7 @@ void
 FlareHostApp::EnqueueCredit(FlowState& flow, uint32_t seq)
 {
     if (flow.done || Simulator::Now() > flow.stop ||
-        seq >= flow.totalPackets ||
-        flow.receivedSeqs.find(seq) != flow.receivedSeqs.end())
+        seq >= flow.totalPackets)
     {
         return;
     }
@@ -412,8 +399,7 @@ FlareHostApp::RunCreditPacer()
 
     FlowState* flow = FindReceiverFlow(item.first);
     if (flow && !flow->done && Simulator::Now() <= flow->stop &&
-        item.second < flow->totalPackets &&
-        flow->receivedSeqs.find(item.second) == flow->receivedSeqs.end())
+        item.second < flow->totalPackets)
     {
         SendCredit(*flow, item.second);
         m_nextCreditSendTime = Simulator::Now() + CreditPaceInterval(*flow);
@@ -436,9 +422,13 @@ FlareHostApp::SendEligibleData(uint32_t flow_id)
     }
     bool sent_any = false;
     while (flow->nextSendSeq < flow->totalPackets &&
-           flow->creditSeqs.erase(flow->nextSendSeq) > 0)
+           !flow->creditTokens.empty())
     {
-        SendData(*flow, flow->nextSendSeq, false);
+        const auto token = flow->creditTokens.front();
+        flow->creditTokens.pop_front();
+        flow->receivedCreditSeqs.erase(token.first);
+        flow->dataTimeSliceMap[flow->nextSendSeq] = token.second;
+        SendData(*flow, flow->nextSendSeq, false, token.first);
         ++flow->nextSendSeq;
         sent_any = true;
     }
@@ -463,9 +453,13 @@ FlareHostApp::OnRetransmissionTimeout(uint32_t flow_id, uint32_t seq)
         return;
     }
     ++flow->timeouts;
-    if (flow->creditSeqs.erase(seq) > 0)
+    if (!flow->creditTokens.empty())
     {
-        SendData(*flow, seq, true);
+        const auto token = flow->creditTokens.front();
+        flow->creditTokens.pop_front();
+        flow->receivedCreditSeqs.erase(token.first);
+        flow->dataTimeSliceMap[seq] = token.second;
+        SendData(*flow, seq, true, token.first);
     }
     else
     {
@@ -495,12 +489,15 @@ FlareHostApp::SendCredit(FlowState& flow, uint32_t seq)
         : FlareHeader::CREDIT;
 
     ++flow.creditsSent;
-    SendFlarePacket(flow, seq, pkt_type, FlareHeader::NONE, 0);
+    SendFlarePacket(flow, seq, pkt_type, FlareHeader::NONE, 0, seq);
     flow.creditSentAt[seq] = Simulator::Now();
 }
 
 void
-FlareHostApp::SendData(FlowState& flow, uint32_t seq, bool retransmission)
+FlareHostApp::SendData(FlowState& flow,
+                       uint32_t seq,
+                       bool retransmission,
+                       uint32_t credit_epoch)
 {
     if (retransmission)
     {
@@ -520,7 +517,7 @@ FlareHostApp::SendData(FlowState& flow, uint32_t seq, bool retransmission)
     ++flow.dataSent;
     flow.sentSeqs.insert(seq);
     SendFlarePacket(flow, seq, FlareHeader::DATA, control_code,
-                    PacketPayloadBytes(flow, seq));
+                    PacketPayloadBytes(flow, seq), credit_epoch);
     Simulator::Schedule(m_retransmissionTimeout,
                         &FlareHostApp::OnRetransmissionTimeout, this,
                         flow.flowId, seq);
@@ -529,7 +526,7 @@ FlareHostApp::SendData(FlowState& flow, uint32_t seq, bool retransmission)
 void
 FlareHostApp::SendControlDone(FlowState& flow)
 {
-    SendFlarePacket(flow, 0, FlareHeader::CONTROL, FlareHeader::FLOW_DONE, 0);
+    SendFlarePacket(flow, 0, FlareHeader::CONTROL, FlareHeader::FLOW_DONE, 0, 0);
 }
 
 void
@@ -537,7 +534,8 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
                               uint32_t seq,
                               uint8_t packet_type,
                               uint8_t control_code,
-                              uint32_t payload_bytes)
+                              uint32_t payload_bytes,
+                              uint32_t credit_epoch)
 {
     if (!m_hostDev)
     {
@@ -549,7 +547,7 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
     flare.SetControlCode(static_cast<FlareHeader::ControlCode>(control_code));
     flare.SetFlowId(flow.flowId);
     flare.SetSeq(seq);
-    flare.SetCreditEpoch(seq);
+    flare.SetCreditEpoch(credit_epoch);
     flare.SetSrcNode(m_nodeId);
     flare.SetDstNode(flow.peerNode);
     flare.SetPathId(static_cast<uint16_t>(flow.pathId));
@@ -598,8 +596,8 @@ FlareHostApp::SendFlarePacket(FlowState& flow,
     // 设置时间片：DATA 包继承对应 credit 的时间片
     if (packet_type == FlareHeader::DATA)
     {
-        auto it = flow.creditTimeSliceMap.find(seq);
-        if (it != flow.creditTimeSliceMap.end())
+        auto it = flow.dataTimeSliceMap.find(seq);
+        if (it != flow.dataTimeSliceMap.end())
         {
             flare.SetTimeSlice(it->second);
         }
@@ -634,21 +632,27 @@ FlareHostApp::HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_ho
     {
         return;
     }
-    if (!flow->creditSeqs.insert(seq).second)
+    if (!flow->receivedCreditSeqs.insert(seq).second)
     {
         ++flow->duplicateCredits;
+        ++flow->creditsReceived;
+        ++flow->pathLengthHistogram[remaining_hops];
+        return;
     }
     ++flow->creditsReceived;
     ++flow->pathLengthHistogram[remaining_hops];
 
-    // 记录这个序列号对应的时间片
-    flow->creditTimeSliceMap[seq] = time_slice;
+    // Credit ids are permits, not data sequence numbers.
+    flow->creditTokens.emplace_back(seq, time_slice);
 
     SendEligibleData(flow_id);
 }
 
 void
-FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops)
+FlareHostApp::HandleData(uint32_t flow_id,
+                         uint32_t seq,
+                         uint32_t remaining_hops,
+                         uint32_t credit_epoch)
 {
     FlowState* flow = FindReceiverFlow(flow_id);
     if (!flow || flow->done)
@@ -661,18 +665,18 @@ FlareHostApp::HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops
     }
     if (!flow->receivedSeqs.insert(seq).second)
     {
+        flow->creditSentAt.erase(credit_epoch);
         ++flow->duplicateData;
         return;
     }
     ++flow->dataReceived;
     ++flow->pathLengthHistogram[remaining_hops];
     OnPathChange(*flow, static_cast<uint8_t>(remaining_hops));
-    flow->creditSentAt.erase(seq);
+    flow->creditSentAt.erase(credit_epoch);
     AdjustCreditRate(*flow, false);
-    const uint32_t next_credit = seq + flow->initialCreditPkts;
-    if (next_credit < flow->totalPackets)
+    if (flow->nextCreditSeq < flow->totalPackets)
     {
-        EnqueueCredit(*flow, next_credit);
+        EnqueueCredit(*flow, flow->nextCreditSeq++);
     }
     if (flow->receivedSeqs.size() >= flow->totalPackets)
     {

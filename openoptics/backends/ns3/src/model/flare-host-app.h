@@ -103,7 +103,8 @@ class FlareHostApp : public Application
         Time firstDataRx;
         Time completionTime;
         bool done = false;
-        std::unordered_set<uint32_t> creditSeqs;
+        std::deque<std::pair<uint32_t, uint8_t>> creditTokens;
+        std::unordered_set<uint32_t> receivedCreditSeqs;
         std::unordered_set<uint32_t> sentSeqs;
         std::unordered_set<uint32_t> receivedSeqs;
         std::unordered_map<uint32_t, uint32_t> pathLengthHistogram;
@@ -117,8 +118,8 @@ class FlareHostApp : public Application
         uint64_t timeouts = 0;
         uint64_t duplicateData = 0;
         uint64_t duplicateCredits = 0;
-        std::unordered_map<uint32_t, uint8_t> creditTimeSliceMap;  // seq -> time_slice
-        std::unordered_map<uint32_t, Time> creditSentAt;           // receiver: seq -> last credit send
+        std::unordered_map<uint32_t, uint8_t> dataTimeSliceMap;    // data seq -> credit time_slice
+        std::unordered_map<uint32_t, Time> creditSentAt;           // receiver: credit id -> last send
 
         // Rate control 状态
         double targetCreditRate = 1.0;      // 目标 credit rate (0-1)
@@ -144,15 +145,22 @@ class FlareHostApp : public Application
     void SendEligibleData(uint32_t flow_id);
     void OnRetransmissionTimeout(uint32_t flow_id, uint32_t seq);
     void SendCredit(FlowState& flow, uint32_t seq);
-    void SendData(FlowState& flow, uint32_t seq, bool retransmission);
+    void SendData(FlowState& flow,
+                  uint32_t seq,
+                  bool retransmission,
+                  uint32_t credit_epoch);
     void SendControlDone(FlowState& flow);
     void SendFlarePacket(FlowState& flow,
                          uint32_t seq,
                          uint8_t packet_type,
                          uint8_t control_code,
-                         uint32_t payload_bytes);
+                         uint32_t payload_bytes,
+                         uint32_t credit_epoch);
     void HandleCredit(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops, uint8_t time_slice);
-    void HandleData(uint32_t flow_id, uint32_t seq, uint32_t remaining_hops);
+    void HandleData(uint32_t flow_id,
+                    uint32_t seq,
+                    uint32_t remaining_hops,
+                    uint32_t credit_epoch);
     void HandleControl(uint32_t flow_id, uint8_t control_code);
 
     void AdjustCreditRate(FlowState& flow, bool credit_dropped);
