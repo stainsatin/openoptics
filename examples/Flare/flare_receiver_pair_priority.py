@@ -209,8 +209,20 @@ def _rank_for_order(priority_class: str, order: str) -> int:
     raise ValueError(f"unknown order {order!r}")
 
 
+def _directed_port_map(circuits: Sequence[Sequence[int]]) -> Dict[Tuple[int, int, int], int]:
+    port_map: Dict[Tuple[int, int, int], int] = {}
+    for circuit in circuits:
+        if len(circuit) < 5:
+            raise ValueError(f"invalid circuit entry: {circuit!r}")
+        ts, node1, node2, port1, port2 = (int(value) for value in circuit[:5])
+        port_map[(ts, node1, node2)] = port1
+        port_map[(ts, node2, node1)] = port2
+    return port_map
+
+
 def _same_slice_paths(
     slice_to_topo: Mapping[int, nx.Graph],
+    port_map: Mapping[Tuple[int, int, int], int],
 ) -> Tuple[List[OpticalPath], Dict[Tuple[int, int, int], Tuple[int, ...]]]:
     paths: List[OpticalPath] = []
     nodes_by_slice: Dict[Tuple[int, int, int], Tuple[int, ...]] = {}
@@ -226,12 +238,14 @@ def _same_slice_paths(
                     continue
                 steps: List[Step] = []
                 for cur_node, next_node in zip(path_nodes[:-1], path_nodes[1:]):
-                    edge = graph[cur_node][next_node]
+                    key = (int(ts), int(cur_node), int(next_node))
+                    if key not in port_map:
+                        raise RuntimeError(f"missing directed port for edge {key}")
                     steps.append(
                         Step(
                             cur_node=int(cur_node),
                             step_type="port",
-                            send_port=int(edge["port1"]),
+                            send_port=int(port_map[key]),
                             send_ts=int(ts),
                             send_node=int(next_node),
                         )
@@ -338,8 +352,10 @@ def _build_network(args: argparse.Namespace, flow_size: int):
         flare_congestion_threshold_percent=args.flare_congestion_threshold,
         flare_tentative_threshold_percent=args.flare_tentative_threshold,
     )
-    net.deploy_topo(_topology())
-    paths, nodes_by_slice = _same_slice_paths(net.get_topo())
+    circuits = _topology()
+    port_map = _directed_port_map(circuits)
+    net.deploy_topo(circuits)
+    paths, nodes_by_slice = _same_slice_paths(net.get_topo(), port_map)
     _validate_credit_paths(_flow_templates(), nodes_by_slice)
     net.deploy_routing(paths, routing_mode="Per-hop")
 
@@ -377,6 +393,13 @@ def _finite(value: Any) -> bool:
 
 def _safe_ratio(num: float, den: float) -> float | None:
     return None if den == 0 else num / den
+
+
+def _call_int(obj: Any, name: str, default: int = 0) -> int:
+    method = getattr(obj, name, None)
+    if method is None:
+        return default
+    return int(method())
 
 
 def _mean(values: Iterable[float]) -> float | None:
@@ -433,6 +456,10 @@ def _tor_rows(installed_flows) -> List[Dict[str, Any]]:
                 "credit_dropped": int(app.GetFlareCreditDropped()),
                 "credit_wasted": int(app.GetFlareCreditWasted()),
                 "data_packets_seen": int(app.GetFlareCreditDataPackets()),
+                "drop_forward_send_fail": _call_int(app, "GetDropForwardSendFail"),
+                "drop_forward_cq": _call_int(app, "GetDropForwardCq"),
+                "drop_adm_fail": _call_int(app, "GetDropAdmFail"),
+                "drop_aeolus_unscheduled": _call_int(app, "GetDropAeolusUnscheduled"),
             }
         )
     return rows
@@ -440,6 +467,7 @@ def _tor_rows(installed_flows) -> List[Dict[str, Any]]:
 
 def _flow_row(plan: FlowPlan, stats: FlareStats) -> Dict[str, Any]:
     credit_loss = stats.credits_sent - stats.credits_received
+    lost_credit_hop_cost = credit_loss * plan.credit_hops
     completed = _finite(stats.fct_s) and float(stats.fct_s) > 0
     return {
         "flow_id": stats.flow_id,
@@ -459,7 +487,9 @@ def _flow_row(plan: FlowPlan, stats: FlareStats) -> Dict[str, Any]:
         "credits_received": stats.credits_received,
         "credit_delivery_ratio": _safe_ratio(stats.credits_received, stats.credits_sent),
         "credit_loss_proxy": credit_loss,
-        "credit_tax_proxy": credit_loss * plan.credit_hops,
+        "credit_tax": _safe_ratio(stats.credits_sent, stats.data_packets_received),
+        "lost_credit_hop_cost_proxy": lost_credit_hop_cost,
+        "credit_tax_proxy": lost_credit_hop_cost,
         "credit_hop_cost_sent": stats.credits_sent * plan.credit_hops,
         "credit_hop_cost_received": stats.credits_received * plan.credit_hops,
         "data_packets_sent": stats.data_packets_sent,
@@ -488,6 +518,10 @@ def _group_summary(
             if _finite(row["fct_s"]) and float(row["fct_s"]) > 0
         ]
         goodputs = [row["goodput_bps"] for row in subset if _finite(row["goodput_bps"])]
+        data_received = sum(row["data_packets_received"] for row in subset)
+        lost_credit_hop_cost = sum(
+            row["lost_credit_hop_cost_proxy"] for row in subset
+        )
         out[str(value)] = {
             "flow_count": len(subset),
             "completed_flow_count": len(fcts),
@@ -495,7 +529,9 @@ def _group_summary(
             "credits_received": credits_received,
             "credit_delivery_ratio": _safe_ratio(credits_received, credits_sent),
             "credit_loss_proxy": credits_sent - credits_received,
-            "credit_tax_proxy": sum(row["credit_tax_proxy"] for row in subset),
+            "credit_tax": _safe_ratio(credits_sent, data_received),
+            "lost_credit_hop_cost_proxy": lost_credit_hop_cost,
+            "credit_tax_proxy": lost_credit_hop_cost,
             "credit_hop_cost_sent": sum(row["credit_hop_cost_sent"] for row in subset),
             "credit_hop_cost_received": sum(
                 row["credit_hop_cost_received"] for row in subset
@@ -504,7 +540,7 @@ def _group_summary(
             "p95_fct_s": _percentile(fcts, 0.95),
             "mean_goodput_bps": _mean(goodputs),
             "data_packets_sent": sum(row["data_packets_sent"] for row in subset),
-            "data_packets_received": sum(row["data_packets_received"] for row in subset),
+            "data_packets_received": data_received,
             "timeouts": sum(row["timeouts"] for row in subset),
             "retransmissions": sum(row["retransmissions"] for row in subset),
         }
@@ -578,6 +614,10 @@ def _summary(
 ) -> Dict[str, Any]:
     total_credits_sent = sum(row["credits_sent"] for row in flow_rows)
     total_credits_received = sum(row["credits_received"] for row in flow_rows)
+    total_data_received = sum(row["data_packets_received"] for row in flow_rows)
+    total_lost_credit_hop_cost = sum(
+        row["lost_credit_hop_cost_proxy"] for row in flow_rows
+    )
     class_summary = _group_summary(flow_rows, "priority_class")
     short = class_summary.get("short", {})
     long = class_summary.get("long", {})
@@ -617,7 +657,9 @@ def _summary(
             total_credits_received, total_credits_sent
         ),
         "total_credit_loss_proxy": total_credits_sent - total_credits_received,
-        "total_credit_tax_proxy": sum(row["credit_tax_proxy"] for row in flow_rows),
+        "total_credit_tax": _safe_ratio(total_credits_sent, total_data_received),
+        "total_lost_credit_hop_cost_proxy": total_lost_credit_hop_cost,
+        "total_credit_tax_proxy": total_lost_credit_hop_cost,
         "total_tor_credit_admitted": sum(row["credit_admitted"] for row in tor_rows),
         "total_tor_credit_dropped": sum(row["credit_dropped"] for row in tor_rows),
         "total_tor_credit_wasted": sum(row["credit_wasted"] for row in tor_rows),
@@ -632,6 +674,11 @@ def _summary(
             if short.get("credit_delivery_ratio") is None
             or long.get("credit_delivery_ratio") is None
             else short["credit_delivery_ratio"] - long["credit_delivery_ratio"]
+        ),
+        "short_minus_long_credit_tax": (
+            None
+            if short.get("credit_tax") is None or long.get("credit_tax") is None
+            else short["credit_tax"] - long["credit_tax"]
         ),
         "short_minus_long_mean_fct_s": (
             None
